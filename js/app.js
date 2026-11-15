@@ -317,11 +317,11 @@
         if (d.status === 'done') { clearInterval(timer); timer = null; status.textContent = '수집 완료. 결과를 불러옵니다...'; const full = await API.get('deep', { nickname: nick }); status.textContent = ''; show(full); b1.disabled = b2.disabled = false; return; }
         if (d.status === 'error') { clearInterval(timer); timer = null; status.textContent = '오류: ' + d.error; b1.disabled = b2.disabled = false; return; }
         const pctDone = d.phase === 'detail' && d.total ? Math.round(d.done / d.total * 100) : 0;
-        status.innerHTML = `${d.status === 'queued' ? '대기 중' : '수집 중'} · 단계: ${d.phase === 'list' ? '경기 목록' : '경기 상세'} · ${d.done || 0}/${d.total || '?'} · 대기열 ${d.queuePosition || 1}번째 <div class="progress" style="margin-top:6px;max-width:400px"><div style="width:${pctDone}%"></div></div>`;
+        status.innerHTML = `${d.status === 'queued' ? '대기 중 (1분 안에 시작)' : '수집 중'} · ${d.phase === 'list' ? `1단계 경기 목록: ${d.total || 0}판 찾음` : `2단계 경기 상세: ${d.done || 0}/${d.total || '?'} (1초에 1판)`} · 대기열 ${d.queuePosition || 1}번째 <div class="progress" style="margin-top:6px;max-width:400px"><div style="width:${pctDone}%"></div></div>`;
       } catch (e) { status.textContent = '상태 확인 실패: ' + e.message; }
     };
     b1.onclick = async () => { const nick = inp.value.trim(); if (!nick) return; b1.disabled = b2.disabled = true; status.textContent = '조회 중...'; try { const d = await API.get('lookup', { nickname: nick }); status.textContent = ''; show(d); } catch (e) { status.textContent = '실패: ' + e.message; } b1.disabled = b2.disabled = false; };
-    b2.onclick = async () => { const nick = inp.value.trim(); if (!nick) return; b1.disabled = b2.disabled = true; status.textContent = '정밀 분석 요청 중...'; try { const d = await API.get('deep', { nickname: nick }); if (d.status === 'done') { status.textContent = ''; show(d); b1.disabled = b2.disabled = false; } else { status.textContent = '수집을 시작했습니다. 처음 보는 닉네임은 5~8분 걸립니다.'; if (timer) clearInterval(timer); timer = setInterval(() => poll(nick), 5000); poll(nick); } } catch (e) { status.textContent = '실패: ' + e.message; b1.disabled = b2.disabled = false; } };
+    b2.onclick = async () => { const nick = inp.value.trim(); if (!nick) return; b1.disabled = b2.disabled = true; status.textContent = '정밀 분석 요청 중...'; try { const d = await API.get('deep', { nickname: nick }); if (d.status === 'done') { status.textContent = ''; show(d); b1.disabled = b2.disabled = false; } else { status.textContent = '수집을 시작했습니다. 처음 보는 닉네임은 판수에 따라 3~8분 걸립니다.'; if (timer) clearInterval(timer); timer = setInterval(() => poll(nick), 5000); poll(nick); } } catch (e) { status.textContent = '실패: ' + e.message; b1.disabled = b2.disabled = false; } };
     if (S.lookup && S.lookup.games) show(S.lookup);
   };
 

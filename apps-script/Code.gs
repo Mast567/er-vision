@@ -634,11 +634,11 @@ function processJobs() {
         var res = apiGet_('/v1/user/games/uid/' + uid + (next ? '?next=' + next : ''));
         (res.userGames || []).forEach(function (g) { if (g.matchingMode === RANKED_MODE) { var n = normGame_(g); buffer.push([nickname, uid, n.gameId, n.seasonId, n.startDtm, JSON.stringify(n), 0]); } });
         pages++; next = res.next || null;
+        if (buffer.length) { gs.getRange(gs.getLastRow() + 1, 1, buffer.length, 7).setValues(buffer); total += buffer.length; buffer = []; }
+        js.getRange(row, 4, 1, 5).setValues([['list', next || '', pages, total, done]]);
         if (!next) break;
         Utilities.sleep(SLEEP_MS);
       }
-      if (buffer.length) gs.getRange(gs.getLastRow() + 1, 1, buffer.length, 7).setValues(buffer);
-      total += buffer.length;
       if (!next) { phase = 'detail'; }
       js.getRange(row, 4, 1, 5).setValues([[phase, next || '', pages, total, done]]);
       js.getRange(row, 10).setValue(new Date().toISOString());
@@ -657,6 +657,7 @@ function processJobs() {
           attachDetail_(n2, det, charMap);
           gs.getRange(r + 2, 6, 1, 2).setValues([[JSON.stringify(n2), 1]]);
           done++;
+          if (done % 5 === 0) { js.getRange(row, 7, 1, 2).setValues([[total, done]]); js.getRange(row, 10).setValue(new Date().toISOString()); }
           Utilities.sleep(SLEEP_MS);
         }
       }
