@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ER Vision</title>
+<meta name="description" content="이터널 리턴 랭크 복기 노트. 경기 기록 분석, 리플레이 복기, 코칭 리포트.">
+<link rel="stylesheet" href="css/style.css">
+<script src="js/vendor/chart.umd.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo">ER</span><span class="brand-name">Vision</span><span class="brand-sub">랭크 복기 노트</span></div>
+  <nav class="nav" id="nav">
+    <a href="#/dashboard" data-route="dashboard">대시보드</a>
+    <a href="#/analysis" data-route="analysis">분석</a>
+    <a href="#/notes" data-route="notes">복기노트</a>
+    <a href="#/reports" data-route="reports">코칭 리포트</a>
+    <a href="#/lookup" data-route="lookup">닉네임 조회</a>
+    <a href="#/settings" data-route="settings">설정</a>
+  </nav>
+  <div class="topbar-right">
+    <label class="season-pick" id="season-pick-wrap"><span class="muted">시즌</span><select id="season-pick"></select></label>
+    <span id="owner-chip" class="chip"></span>
+  </div>
+</header>
+
+<main id="view" class="view"></main>
+
+<div id="toast" class="toast" hidden></div>
+
+<template id="tpl-gate">
+  <section class="gate">
+    <h1>ER Vision</h1>
+    <p class="muted">이터널 리턴 랭크 복기 노트. 데이터 창구 주소와 비밀 코드를 입력하면 시작됩니다.</p>
+    <label>데이터 창구 주소 (Apps Script 웹 앱 URL)<input id="gate-url" type="url" placeholder="https://script.google.com/macros/s/.../exec"></label>
+    <label>비밀 코드<input id="gate-token" type="password" placeholder="시트 메뉴 [ER 복기] > [5. 사이트 비밀 코드 설정]에서 정한 코드"></label>
+    <div class="row"><button class="btn primary" id="gate-go">연결</button><span id="gate-msg" class="muted"></span></div>
+    <details class="help"><summary>주소는 어디서 얻나요?</summary>
+      <ol>
+        <li>구글 시트에서 [확장 프로그램] → [Apps Script]를 연다.</li>
+        <li>오른쪽 위 [배포] → [새 배포] → 유형 선택(톱니) → [웹 앱].</li>
+        <li>실행 사용자: 나 / 액세스 권한: 모든 사용자 → [배포].</li>
+        <li>나오는 "웹 앱 URL"(…/exec로 끝남)을 위 칸에 붙인다.</li>
+      </ol>
+    </details>
+  </section>
+</template>
+
+<script src="js/api.js"></script>
+<script src="js/analysis.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
