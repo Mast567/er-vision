@@ -201,6 +201,7 @@ function normGame_(g) {
     causeOfDeath: g.causeOfDeath || '', killerChar: g.killerCharacter || '',
     teamNumber: g.teamNumber, nickname: g.nickname,
     mode: g.matchingMode, teamMode: g.matchingTeamMode, victory: g.victory ? 1 : 0,
+    premade: g.preMade == null ? null : Number(g.preMade),   // 같이 큐를 돌린 인원: 1 솔로, 2 듀오, 3 트리오, 4 (코발트) 풀파티
     mate1: '', mate2: '', mate3: '', teamAvgRp: null, lobbyAvgRp: null
   };
 }
@@ -221,7 +222,7 @@ function stamp_() { cfg_().sheet.getRange('B5').setValue(Utilities.formatDate(ne
 var GAME_COLS = ['gameId', 'startDtm', 'seasonId', 'characterNum', 'characterName', null, null, 'gameRank', 'win', 'top3', 'kills', 'assists', 'deaths', 'teamKill',
   'dmgDealt', 'dmgTaken', 'surviveMin', 'durationMin', 'd1', 'd2', 'd3', 'k1', 'k2', 'k3', 'rpChange', 'rp', 'entryCost', 'rpGain', 'gambitRp',
   'startArea', null, 'deathArea', null, 'causeOfDeath', 'killerChar', 'mate1', 'mate2', 'teamAvgRp', 'lobbyAvgRp',
-  null, null, null, null, 'mode', 'teamMode', 'mate3'];   // AN~AQ 수식 열, AR 모드(2 일반/3 랭크/6 코발트), AS 팀 인원 모드, AT 팀원3
+  null, null, null, null, 'mode', 'teamMode', 'mate3', 'premade'];   // AN~AQ 수식 열, AR 모드(2 일반/3 랭크/6 코발트), AS 팀 인원 모드, AT 팀원3, AU 다인큐 인원
 
 function readOwnerGames_() {
   var sh = SpreadsheetApp.getActive().getSheetByName('경기기록');
@@ -289,15 +290,15 @@ function fetchNewGamesCore_() {
       n.surviveMin, n.durationMin, n.d1, n.d2, n.d3, n.k1, n.k2, n.k3, n.rpChange, n.rp == null ? '' : n.rp, n.entryCost, n.rpGain, n.gambitRp == null ? '' : n.gambitRp, n.startArea == null ? '' : n.startArea]);
     rowsAF.push([n.deathArea == null ? '' : n.deathArea]);
     rowsAH.push([n.causeOfDeath, n.killerChar, n.mate1, n.mate2, n.teamAvgRp == null ? '' : n.teamAvgRp, n.lobbyAvgRp == null ? '' : n.lobbyAvgRp]);
-    rowsAR.push([n.mode, n.teamMode, n.mate3]);
+    rowsAR.push([n.mode, n.teamMode, n.mate3, n.premade == null ? '' : n.premade]);
   }
   var start = sh.getLastRow() + 1, cnt = rowsA.length;
-  if (sh.getMaxColumns() < 46) sh.insertColumnsAfter(sh.getMaxColumns(), 46 - sh.getMaxColumns());
+  if (sh.getMaxColumns() < 47) sh.insertColumnsAfter(sh.getMaxColumns(), 47 - sh.getMaxColumns());
   sh.getRange(start, 1, cnt, 5).setValues(rowsA);
   sh.getRange(start, 8, cnt, 23).setValues(rowsH);
   sh.getRange(start, 32, cnt, 1).setValues(rowsAF);
   sh.getRange(start, 34, cnt, 6).setValues(rowsAH);
-  sh.getRange(start, 44, cnt, 3).setValues(rowsAR);   // AR:AT
+  sh.getRange(start, 44, cnt, 4).setValues(rowsAR);   // AR:AU
   stamp_();
   return { added: cnt, remaining: remaining, games: normed };
 }

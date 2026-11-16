@@ -102,9 +102,13 @@
     assignTitles(trios); assignTitles(people);
     const withGames = G.filter(g => mm.has(String(g.gameId))).length;
     const solo = withGames - trios.reduce((s, t) => s + t.n, 0);
+    const pm = { 1: 0, 2: 0, 3: 0, 4: 0, u: 0 };
+    G.forEach(g => { const k = g.premade == null ? 'u' : g.premade; pm[k] = (pm[k] || 0) + 1; });
+    const pmText = pm.u === G.length ? '기록 없음 (새 버전부터 저장)' : `솔로 ${pm[1]} · 듀오 ${pm[2]} · 트리오 ${pm[3]}${isCobalt() ? ` · 풀파티 ${pm[4]}` : ''}${pm.u ? ` · 미상 ${pm.u}` : ''}`;
 
     const qualTrios = trios.filter(t => t.n >= LIST_MIN), qualPeople = people.filter(p => p.n >= LIST_MIN);
     v.appendChild(el('div', { class: 'grid kpi' }, [tile('팀원 기록이 있는 판', String(withGames)), tile('같이 2판 이상 한 사람', String(qualPeople.length)), tile(isCobalt() ? '2판 이상 뭉친 팀' : '2판 이상 뭉친 트리오', String(qualTrios.length)), tile('칭호 기준', `${MIN_GAMES}판 이상`)]));
+    v.appendChild(el('p', { class: 'small muted', style: 'margin:8px 0 0' }, '큐 인원 (API의 preMade 값 기준): ' + pmText));
     if (!qualPeople.length) {
       v.appendChild(el('div', { class: 'card empty', html: `아직 같은 사람과 ${LIST_MIN}판 이상 함께한 기록이 없습니다. 지금까지는 거의 솔로 큐로 돌린 셈이라, 친구와 함께하는 랭크가 쌓이면 여기에 나타납니다.` }));
       return;

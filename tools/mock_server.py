@@ -19,7 +19,7 @@ def norm(g):
       "d1":g.get("deathsPhaseOne",0),"d2":g.get("deathsPhaseTwo",0),"d3":g.get("deathsPhaseThree",0),"k1":g.get("killsPhaseOne",0),"k2":g.get("killsPhaseTwo",0),"k3":g.get("killsPhaseThree",0),
       "rpChange":gain+cost+gam,"rp":g.get("rankPoint"),"entryCost":cost,"rpGain":gain,"gambitRp":g.get("mmrGainGambit"),
       "startArea":num(g.get("placeOfStart")),"deathArea":num(g.get("placeOfDeath")),"causeOfDeath":g.get("causeOfDeath",""),"killerChar":g.get("killerCharacter",""),
-      "teamNumber":g["teamNumber"],"nickname":g["nickname"],"mode":g["matchingMode"],"teamMode":g.get("matchingTeamMode"),"victory":1 if g.get("victory") else 0,"mate1":"","mate2":"","mate3":"","teamAvgRp":None,"lobbyAvgRp":None}
+      "teamNumber":g["teamNumber"],"nickname":g["nickname"],"mode":g["matchingMode"],"teamMode":g.get("matchingTeamMode"),"victory":1 if g.get("victory") else 0,"premade":g.get("preMade"),"mate1":"","mate2":"","mate3":"","teamAvgRp":None,"lobbyAvgRp":None}
 def detail(n, det):
     team=[p for p in det if p.get("teamNumber")==n["teamNumber"]]
     mates=[CH.get(p["characterNum"],{}).get("name",str(p["characterNum"])) for p in team if p.get("nickname")!=n["nickname"]]
