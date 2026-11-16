@@ -45,8 +45,21 @@
     sel.onchange = () => { S.season = sel.value === 'all' ? 'all' : Number(sel.value); route(); };
   }
 
-  // ---------- 라우팅 ----------
+  // ---------- 라우팅 + 기능 등록 창구 ----------
+  // 기능 파일은 ERV.registerView({ id, label, order, season, render }) 로 화면을 추가한다. 핵심 코드는 건드리지 않는다.
   const views = {};
+  const registry = [];
+  function registerView(def) {
+    const i = registry.findIndex(r => r.id === def.id);
+    if (i >= 0) registry[i] = def; else registry.push(def);
+    registry.sort((a, b) => (a.order || 0) - (b.order || 0));
+    views[def.id] = def.render;
+    renderNav();
+  }
+  function renderNav() {
+    const nav = $('#nav'); nav.innerHTML = '';
+    registry.forEach(r => nav.appendChild(el('a', { href: '#/' + r.id, 'data-route': r.id }, r.label)));
+  }
   function route() {
     killCharts();
     const hash = location.hash.replace(/^#\/?/, '') || 'dashboard';
@@ -54,8 +67,9 @@
     document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('active', a.dataset.route === name));
     const v = $('#view'); v.innerHTML = '';
     if (!S.boot) { renderGate(v); return; }
-    $('#season-pick-wrap').style.display = (name === 'dashboard' || name === 'analysis' || name === 'notes') ? '' : 'none';
-    (views[name] || views.dashboard)(v);
+    const def = registry.find(r => r.id === name) || registry.find(r => r.id === 'dashboard');
+    $('#season-pick-wrap').style.display = def && def.season ? '' : 'none';
+    def.render(v);
   }
   window.addEventListener('hashchange', route);
 
@@ -341,9 +355,20 @@
     v.appendChild(el('div', { class: 'card section', style: 'max-width:640px', html: `<h3>도움말</h3><ul class="small muted"><li>복기노트는 구글 시트 '복기노트' 탭에 저장됩니다. 시트에서 직접 고쳐도 됩니다.</li><li>경기 데이터는 매일 아침 6시에 자동으로 더해집니다(시트 메뉴 4번을 켠 경우).</li><li>데이터 창구 코드를 바꾼 뒤에는 Apps Script에서 [배포 관리] → 편집 → 버전 '새 버전'으로 다시 배포해야 반영됩니다.</li></ul>` }));
   };
 
-  // ---------- 시작 ----------
-  (async () => {
+  // ---------- 핵심 화면 등록 ----------
+  registerView({ id: 'dashboard', label: '대시보드', order: 10, season: true, render: views.dashboard });
+  registerView({ id: 'analysis', label: '분석', order: 20, season: true, render: views.analysis });
+  registerView({ id: 'notes', label: '복기노트', order: 30, season: true, render: views.notes });
+  registerView({ id: 'reports', label: '코칭 리포트', order: 40, render: views.reports });
+  registerView({ id: 'lookup', label: '닉네임 조회', order: 50, render: views.lookup });
+  registerView({ id: 'settings', label: '설정', order: 90, render: views.settings });
+
+  // 기능 파일이 쓰는 공용 도구
+  window.ERV = { registerView, S, Analysis, route, helpers: { $, el, esc, fmtP, fmtN, fmtS, SERIES, tile, chart, rankBadge, phaseHtml, gamesTable, statTable, toast, filtered, seasonName, deltaHtml } };
+
+  // ---------- 시작 (기능 파일들이 먼저 등록되도록 다음 틱에) ----------
+  setTimeout(async () => {
     if (API.store.url && API.store.token) { try { await loadBoot(); } catch (e) { toast('연결 실패: ' + e.message, true); } }
     route();
-  })();
+  }, 0);
 })();

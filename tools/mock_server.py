@@ -27,6 +27,14 @@ def detail(n, det):
     t=[p["rankPoint"] for p in team if isinstance(p.get("rankPoint"),(int,float))]; l=[p["rankPoint"] for p in det if isinstance(p.get("rankPoint"),(int,float))]
     n["teamAvgRp"]=round(mean(t)) if t else None; n["lobbyAvgRp"]=round(mean(l)) if l else None; return n
 RANKED=sorted([g for g in G if g["matchingMode"]==3], key=lambda g:g["startDtm"])
+def mates_of(g):
+    det=D.get(str(g["gameId"]),[]); team=[p for p in det if p.get("teamNumber")==g["teamNumber"] and p.get("nickname")!=g["nickname"]][:2]
+    return {"gameId":g["gameId"],"mates":[{"nick":p.get("nickname",""),"char":CH.get(p["characterNum"],{}).get("name",""),"rp":p.get("rankPoint")} for p in team]}
+TEAMMATES=[mates_of(g) for g in RANKED]
+# 테스트용: 일부 경기의 팀원을 같은 두 사람으로 바꿔 트리오가 생기게 한다
+for i,t in enumerate(TEAMMATES[-40:]):
+    if i%3!=2: t["mates"]=[{"nick":"친구A","char":"Jackie","rp":6800},{"nick":"친구B","char":"Nadine","rp":6900}]
+
 GAMES=[detail(norm(g), D.get(str(g["gameId"]),[])) for g in RANKED]
 META={"characters":{str(c["code"]):{"code":c["code"],"name":c["name"],"ko":"","range":{"Melee":"근접","Range":"원거리"}.get(c["weaponRangeType"],"혼합")} for c in CH.values()},
       "areas":{str(a["code"]):{"code":a["code"],"name":a["name"],"ko":KO_AREA.get(a["name"],"")} for a in AR.values()},
@@ -50,7 +58,7 @@ class H(http.server.SimpleHTTPRequestHandler):
         a=p.get("action","ping")
         if a=="ping": return {"ok":True,"time":"now","needsToken":True}
         if p.get("token")!="test": return {"ok":False,"error":"비밀 코드가 틀렸습니다."}
-        if a=="bootstrap": return {"ok":True,"data":{"owner":{"nickname":"돛대","uid":"X","lastFetch":"2026-11-15 09:00"},"meta":META,"seasons":SEASONS,"games":GAMES,"notes":NOTES,"reports":REPORTS}}
+        if a=="bootstrap": return {"ok":True,"data":{"owner":{"nickname":"돛대","uid":"X","lastFetch":"2026-11-15 09:00"},"meta":META,"seasons":SEASONS,"games":GAMES,"notes":NOTES,"reports":REPORTS,"teammates":TEAMMATES}}
         if a=="seasonStats": return {"ok":True,"data":SST}
         if a=="refresh": return {"ok":True,"data":{"added":0,"remaining":0,"games":[]}}
         if a=="saveNote":

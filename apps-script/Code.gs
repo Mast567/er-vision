@@ -8,6 +8,17 @@
  * 시트 탭: 경기기록 / 복기노트 / 코칭리포트 / 캐릭터 / 지역 / 설정 / 작업 / 캐시유저 / 캐시경기
  */
 
+
+// =====================================================================
+// 확장 고리: 기능 파일(예: Companions.gs)이 여기에 자기 함수를 등록한다. 핵심 코드는 수정하지 않는다.
+//  EXT.actions['이름'] = function(p){...}         -> 웹 앱 action 추가
+//  EXT.onOwnerGameDetail.push(function(n, det){}) -> 내 경기 상세를 받을 때마다 호출 (n: 정규화 경기, det: 참가자 원본)
+//  EXT.bootstrap.push(function(data){})           -> bootstrap 응답에 필드 추가
+//  EXT.ensureSheets.push(function(ss){})          -> [6. 사이트용 탭 만들기] 때 호출
+// =====================================================================
+var EXT = (typeof EXT === 'undefined') ? { actions: {}, onOwnerGameDetail: [], bootstrap: [], ensureSheets: [] } : EXT;
+function extRun_(list, a, b) { (list || []).forEach(function (f) { try { f(a, b); } catch (e) { Logger.log('EXT error: ' + e); } }); }
+
 var API_BASE = 'https://open-api.bser.io';
 var RANKED_MODE = 3;            // matchingMode 3 = 랭크
 var SLEEP_MS = 1100;            // API 한도: 초당 1회
@@ -58,6 +69,7 @@ function ensureSiteSheets() {
   mk_(ss, '작업', ['nickname', 'uid', 'status', 'phase', 'next', 'pages', 'total', 'done', 'createdAt', 'updatedAt', 'error']);
   mk_(ss, '캐시유저', ['nickname', 'uid', 'status', 'lastFetch', 'lastGameId', 'gameCount']);
   mk_(ss, '캐시경기', ['nickname', 'uid', 'gameId', 'seasonId', 'startDtm', 'json', 'detailDone']);
+  extRun_(EXT.ensureSheets, ss);
   toast_('사이트용 탭 준비 완료');
 }
 function mk_(ss, name, headers) {
@@ -266,6 +278,7 @@ function fetchNewGamesCore_() {
     try { det = apiGet_('/v1/games/' + g2.gameId).userGames || []; } catch (e) { det = []; }
     var n = attachDetail_(normGame_(g2), det, charMap);
     normed.push(n);
+    extRun_(EXT.onOwnerGameDetail, n, det);
     var c = charMap[String(n.characterNum)];
     rowsA.push([n.gameId, n.startDtm, n.seasonId, n.characterNum, c ? c.name : '']);
     rowsH.push([n.gameRank, n.gameRank === 1 ? 1 : 0, n.gameRank <= 3 ? 1 : 0, n.kills, n.assists, n.deaths, n.teamKill, n.dmgDealt, n.dmgTaken,
@@ -376,7 +389,9 @@ function handle_(e, p) {
       case 'lookup': return out_({ ok: true, data: quickLookup_(String(p.nickname || '').trim()) });
       case 'deep': return out_({ ok: true, data: deepLookup_(String(p.nickname || '').trim(), p.force === '1' || p.force === true) });
       case 'jobStatus': return out_({ ok: true, data: jobStatus_(String(p.nickname || '').trim()) });
-      default: return out_({ ok: false, error: '알 수 없는 action: ' + action });
+      default:
+        if (EXT.actions[action]) return out_({ ok: true, data: EXT.actions[action](p) });
+        return out_({ ok: false, error: '알 수 없는 action: ' + action });
     }
   } catch (err) {
     return out_({ ok: false, error: String(err && err.message || err) });
@@ -399,7 +414,7 @@ function meta_() {
 function bootstrap_() {
   var c = cfg_();
   var uid = getUserId_();
-  return {
+  var data = {
     owner: { nickname: c.nickname, uid: uid, lastFetch: String(c.sheet.getRange('B5').getValue() || '') },
     meta: meta_(),
     seasons: seasons_(),
@@ -407,6 +422,8 @@ function bootstrap_() {
     notes: readNotes_(),
     reports: readReports_()
   };
+  extRun_(EXT.bootstrap, data);
+  return data;
 }
 
 // ---------- 복기노트 ----------
