@@ -2,7 +2,7 @@
 (() => {
   if (!window.ERV) return;
   const { registerView, S, Analysis, helpers: H } = ERV;
-  const { el, esc, fmtP, fmtN, fmtS, SERIES, tile, rankBadge, statTable, filtered, gamesTable, isCobalt } = H;
+  const { el, esc, fmtP, fmtN, tile, statTable, filtered, gamesTable, isCobalt } = H;
 
   const MIN_GAMES = 5;      // 칭호를 줄 최소 판수
   const LIST_MIN = 2;       // 목록에 보일 최소 판수

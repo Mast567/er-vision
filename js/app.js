@@ -1,5 +1,6 @@
 /* ER Vision - 화면 로직 (해시 라우팅, 상태, 렌더링) */
 (() => {
+  const VERSION = 'v0.6';   // 정식 공개 전까지 v0.x, 정식부터 v1 (정수)
   const $ = (sel, root = document) => root.querySelector(sel);
   const el = (tag, attrs = {}, children = []) => {
     const n = document.createElement(tag);
@@ -349,7 +350,7 @@
         try { await API.post('saveNote', body); const idx = notes.findIndex(x => String(x.gameId) === String(g.gameId)); if (idx >= 0) notes[idx] = Object.assign(notes[idx], body); else notes.push(body); S.boot.notes = notes; noteMap.set(String(g.gameId), body); toast('저장했습니다.'); renderList(); renderEditor(); } catch (e) { toast('저장 실패: ' + e.message, true); save.disabled = false; }
       };
       rowB.appendChild(save);
-      if (noteMap.has(String(g.gameId))) { const del = el('button', { class: 'btn danger' }, '삭제'); del.onclick = async () => { if (!confirm('이 경기의 복기노트를 삭제할까요?')) return; try { await API.post('deleteNote', { gameId: g.gameId }); S.boot.notes = notes.filter(x => String(x.gameId) !== String(g.gameId)); noteMap.delete(String(g.gameId)); toast('삭제했습니다.'); views.notes(v.replaceChildren() || v); } catch (e) { toast('삭제 실패: ' + e.message, true); } }; rowB.appendChild(del); }
+      if (noteMap.has(String(g.gameId))) { const del = el('button', { class: 'btn danger' }, '삭제'); del.onclick = async () => { if (!confirm('이 경기의 복기노트를 삭제할까요?')) return; try { await API.post('deleteNote', { gameId: g.gameId }); S.boot.notes = notes.filter(x => String(x.gameId) !== String(g.gameId)); noteMap.delete(String(g.gameId)); toast('삭제했습니다.'); route(); } catch (e) { toast('삭제 실패: ' + e.message, true); } }; rowB.appendChild(del); }
       right.appendChild(rowB);
       right.appendChild(checklist());
     }
@@ -415,7 +416,7 @@
     v.appendChild(el('h1', {}, '설정'));
     const o = S.boot.owner;
     const card = el('div', { class: 'card', style: 'max-width:640px' });
-    card.appendChild(el('div', { class: 'info-grid', html: `<div><div class="k">계정</div><div>${esc(o.nickname)}</div></div><div><div class="k">마지막 수집</div><div>${esc(o.lastFetch || '-')}</div></div><div><div class="k">저장된 경기</div><div>${S.games.length}판</div></div><div><div class="k">데이터 창구</div><div class="small">${esc(API.store.url)}</div></div>` }));
+    card.appendChild(el('div', { class: 'info-grid', html: `<div><div class="k">계정</div><div>${esc(o.nickname)}</div></div><div><div class="k">마지막 수집</div><div>${esc(o.lastFetch || '-')}</div></div><div><div class="k">저장된 경기</div><div>${S.games.length}판</div></div><div><div class="k">데이터 창구</div><div class="small">${esc(API.store.url)}</div></div><div><div class="k">사이트 버전</div><div>${VERSION}</div></div>` }));
     const r = el('div', { class: 'row', style: 'margin-top:14px' });
     const refresh = el('button', { class: 'btn primary' }, '지금 갱신 (새 경기 가져오기)');
     refresh.onclick = async () => { refresh.disabled = true; refresh.textContent = '가져오는 중... (최대 2분)'; try { const d = await API.get('refresh'); toast(`${d.added}판 추가` + (d.remaining ? ` · ${d.remaining}판 남음, 한 번 더 누르세요` : '')); if (d.added) { await loadBoot(); } } catch (e) { toast('실패: ' + e.message, true); } refresh.disabled = false; refresh.textContent = '지금 갱신 (새 경기 가져오기)'; };
@@ -435,7 +436,7 @@
   registerView({ id: 'settings', label: '설정', order: 90, render: views.settings });
 
   // 기능 파일이 쓰는 공용 도구
-  window.ERV = { registerView, S, Analysis, route, helpers: { $, el, esc, fmtP, fmtN, fmtS, SERIES, tile, chart, rankBadge, phaseHtml, gamesTable, statTable, toast, filtered, seasonName, deltaHtml, isCobalt, hasRp } };
+  window.ERV = { VERSION, registerView, S, Analysis, route, helpers: { $, el, esc, fmtP, fmtN, fmtS, SERIES, tile, chart, rankBadge, phaseHtml, gamesTable, statTable, toast, filtered, seasonName, deltaHtml, isCobalt, hasRp } };
 
   // ---------- 시작 (기능 파일들이 먼저 등록되도록 다음 틱에) ----------
   setTimeout(async () => {

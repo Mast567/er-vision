@@ -53,6 +53,10 @@ apps-script/*.gs    기능별 데이터 창구 파일
 tools/mock_server.py 개발용 가짜 데이터 서버
 ```
 
+## 버전
+
+정식 공개 전까지 `v0.x`로 올린다(v0.6 → v0.7 …). 사이트(`js/app.js`의 VERSION)와 데이터 창구(`apps-script/Code.gs`의 VERSION)는 같은 번호를 쓰고, 설정 화면에서 사이트 버전을 볼 수 있다. 정식 공개 때 `v1`부터 정수 번호를 쓴다.
+
 ## 외부 라이브러리
 
 - [Chart.js](https://www.chartjs.org/) 4.4.1, MIT. `js/vendor/chart.LICENSE.md`

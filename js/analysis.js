@@ -55,8 +55,7 @@ const Analysis = (() => {
       rpStart: G[0].rp, rpEnd: G[n - 1].rp,
       avgTeamKill: r2(mean(G.map(g => g.teamKill || 0))),
       kd: r2((G.reduce((s, g) => s + (g.kills || 0), 0)) / Math.max(1, G.reduce((s, g) => s + (g.deaths || 0), 0))),
-      dmgPerMin: Math.round(mean(G.map(g => (g.dmgDealt || 0) / Math.max(g.surviveMin || 1, 1))) || 0),
-      takenPerMin: Math.round(mean(G.map(g => (g.dmgTaken || 0) / Math.max(g.surviveMin || 1, 1))) || 0)
+      dmgPerMin: Math.round(mean(G.map(g => (g.dmgDealt || 0) / Math.max(g.surviveMin || 1, 1))) || 0)
     };
   }
   function groupBy(G, keyFn, minN = 1) {

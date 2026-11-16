@@ -19,6 +19,7 @@
 var EXT = (typeof EXT === 'undefined') ? { actions: {}, onOwnerGameDetail: [], bootstrap: [], ensureSheets: [] } : EXT;
 function extRun_(list, a, b) { (list || []).forEach(function (f) { try { f(a, b); } catch (e) { Logger.log('EXT error: ' + e); } }); }
 
+var VERSION = 'v0.6';           // 사이트와 같은 번호를 쓴다. 정식 공개 전까지 v0.x
 var API_BASE = 'https://open-api.bser.io';
 var RANKED_MODE = 3;            // matchingMode 3 = 랭크
 var STORE_MODES = [2, 3, 6];    // 내 경기로 저장하는 모드: 2 일반, 3 랭크, 6 코발트 (닉네임 조회는 랭크만)
@@ -298,7 +299,7 @@ function fetchNewGamesCore_() {
   sh.getRange(start, 8, cnt, 23).setValues(rowsH);
   sh.getRange(start, 32, cnt, 1).setValues(rowsAF);
   sh.getRange(start, 34, cnt, 6).setValues(rowsAH);
-  sh.getRange(start, 44, cnt, 4).setValues(rowsAR);   // AR:AU
+  sh.getRange(start, 44, cnt, 4).setValues(rowsAR);
   stamp_();
   return { added: cnt, remaining: remaining, games: normed };
 }
@@ -382,7 +383,7 @@ function out_(obj) { return ContentService.createTextOutput(JSON.stringify(obj))
 function handle_(e, p) {
   try {
     var action = p.action || 'ping';
-    if (action === 'ping') return out_({ ok: true, time: new Date().toISOString(), needsToken: !!PropertiesService.getScriptProperties().getProperty('SITE_TOKEN') });
+    if (action === 'ping') return out_({ ok: true, version: VERSION, time: new Date().toISOString(), needsToken: !!PropertiesService.getScriptProperties().getProperty('SITE_TOKEN') });
     checkToken_(p.token);
     switch (action) {
       case 'bootstrap': return out_({ ok: true, data: bootstrap_() });
