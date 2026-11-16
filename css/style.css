@@ -34,7 +34,7 @@ h3 { font-size: 14px; margin: 0 0 8px; color: var(--text-2); font-weight: 600; l
 .brand-name { font-weight: 700; font-size: 16px; }
 .brand-sub { color: var(--muted); font-size: 12px; margin-left: 4px; }
 .nav { display: flex; gap: 4px; flex: 1; }
-.nav a { color: var(--text-2); padding: 6px 12px; border-radius: 8px; }
+.nav a { color: var(--text-2); padding: 6px 10px; border-radius: 8px; white-space: nowrap; }
 .nav a:hover { background: var(--surface-2); color: var(--text); }
 .nav a.active { background: var(--surface-2); color: var(--text); font-weight: 600; }
 .topbar-right { display: flex; align-items: center; gap: 12px; }
@@ -58,6 +58,7 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color:
 .grid.kpi { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .grid.two { grid-template-columns: 1fr 1fr; }
 .grid.three { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 1350px) { .brand-sub { display: none; } .view { padding: 16px; } }
 @media (max-width: 900px) { .grid.two, .grid.three { grid-template-columns: 1fr; } .nav { flex-wrap: wrap; } .topbar { flex-wrap: wrap; } }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
 .card.pad-0 { padding: 0; }
