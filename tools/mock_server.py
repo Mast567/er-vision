@@ -74,7 +74,7 @@ class H(http.server.SimpleHTTPRequestHandler):
             return {"ok":True,"data":{"nickname":nick,"uid":"Y","mode":"quick","games":[g for g in GAMES if g["mode"]==3][-50:],"seasonStats":SST[:1],"currentSeasonId":42,"fetchedAt":"now","cached":False}}
         if a in("deep","jobStatus"):
             nick=p.get("nickname",""); j=JOBS.setdefault(nick,{"t":time.time()}); el=time.time()-j["t"]
-            if el<6: return {"ok":True,"data":{"nickname":nick,"mode":"deep","status":"running" if el>2 else "queued","phase":"list" if el<4 else "detail","total":331,"done":int(min(331,el*60)),"queuePosition":1}}
+            if el<6: return {"ok":True,"data":{"nickname":nick,"mode":"deep","status":"running" if el>2 else "queued","phase":"list" if el<4 else "detail","total":int(min(331,el*110)) if el<4 else 331,"done":0 if el<4 else int(min(331,(el-4)*160)),"estimate":340,"queuePosition":1}}
             return {"ok":True,"data":{"nickname":nick,"uid":"Y","mode":"deep","status":"done","games":[g for g in GAMES if g["mode"]==3],"seasonStats":SST,"lastFetch":"2026-11-15T09:00:00Z","refreshed":False,"cooldownMs":600000}}
         return {"ok":False,"error":"unknown "+a}
 if __name__=="__main__":

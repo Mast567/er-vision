@@ -395,8 +395,14 @@
         const d = await API.get('jobStatus', { nickname: nick });
         if (d.status === 'done') { clearInterval(timer); timer = null; status.textContent = '수집 완료. 결과를 불러옵니다...'; const full = await API.get('deep', { nickname: nick }); status.textContent = ''; show(full); b1.disabled = b2.disabled = false; return; }
         if (d.status === 'error') { clearInterval(timer); timer = null; status.textContent = '오류: ' + d.error; b1.disabled = b2.disabled = false; return; }
-        const pctDone = d.phase === 'detail' && d.total ? Math.round(d.done / d.total * 100) : 0;
-        status.innerHTML = `${d.status === 'queued' ? '대기 중 (1분 안에 시작)' : '수집 중'} · ${d.phase === 'list' ? `1단계 경기 목록: ${d.total || 0}판 찾음` : `2단계 경기 상세: ${d.done || 0}/${d.total || '?'} (1초에 1판)`} · 대기열 ${d.queuePosition || 1}번째 <div class="progress" style="margin-top:6px;max-width:400px"><div style="width:${pctDone}%"></div></div>`;
+        // 게이지: 목록 단계 0~20% (예상 판수 대비), 상세 단계 20~100%
+        const est = d.estimate || d.total || 0;
+        let pct = 0;
+        if (d.phase === 'list') pct = est ? Math.min(20, Math.round((d.total || 0) / est * 20)) : 0;
+        else if (d.total) pct = 20 + Math.round((d.done || 0) / d.total * 80);
+        const remainingReq = d.phase === 'list' ? (est ? Math.max(est - (d.total || 0), 0) / 10 + est : (d.total || 0)) : Math.max((d.total || 0) - (d.done || 0), 0);
+        const etaMin = Math.ceil(remainingReq * 1.15 / 60);
+        status.innerHTML = `${d.status === 'queued' ? '대기 중 (1분 안에 시작)' : '수집 중'} · ${d.phase === 'list' ? `1단계 경기 목록: ${d.total || 0}판 찾음${est ? ` / 약 ${est}판 예상` : ''}` : `2단계 경기 상세: ${d.done || 0}/${d.total || '?'} (1초에 1판)`} · 대기열 ${d.queuePosition || 1}번째${d.status !== 'queued' && (est || d.total) ? ` · 남은 시간 약 ${etaMin}분` : ''} <div class="progress" style="margin-top:6px;max-width:400px"><div style="width:${pct}%"></div></div><span class="small muted">${pct}%</span>`;
       } catch (e) { status.textContent = '상태 확인 실패: ' + e.message; }
     };
     b1.onclick = async () => { const nick = inp.value.trim(); if (!nick) return; b1.disabled = b2.disabled = true; status.textContent = '조회 중...'; try { const d = await API.get('lookup', { nickname: nick }); status.textContent = ''; show(d); } catch (e) { status.textContent = '실패: ' + e.message; } b1.disabled = b2.disabled = false; };

@@ -67,7 +67,7 @@ function setSiteToken() {
 
 function ensureSiteSheets() {
   var ss = SpreadsheetApp.getActive();
-  mk_(ss, '작업', ['nickname', 'uid', 'status', 'phase', 'next', 'pages', 'total', 'done', 'createdAt', 'updatedAt', 'error']);
+  mk_(ss, '작업', ['nickname', 'uid', 'status', 'phase', 'next', 'pages', 'total', 'done', 'createdAt', 'updatedAt', 'error', 'estimate']);
   mk_(ss, '캐시유저', ['nickname', 'uid', 'status', 'lastFetch', 'lastGameId', 'gameCount']);
   mk_(ss, '캐시경기', ['nickname', 'uid', 'gameId', 'seasonId', 'startDtm', 'json', 'detailDone']);
   extRun_(EXT.ensureSheets, ss);
@@ -542,14 +542,30 @@ function deepLookup_(nickname, force) {
   if (!job) {
     var uid = lookupUid_(nickname);
     var js = ss.getSheetByName('작업');
-    js.appendRow([nickname, uid, 'queued', 'list', '', 0, 0, 0, new Date().toISOString(), new Date().toISOString(), '']);
+    if (js.getLastColumn() < 12) js.getRange(1, 12).setValue('estimate');
+    js.appendRow([nickname, uid, 'queued', 'list', '', 0, 0, 0, new Date().toISOString(), new Date().toISOString(), '', estimateGames_(uid)]);
     if (!u) us.appendRow([nickname, uid, 'queued', '', '', 0]);
     ensureJobTrigger_();
     job = findJob_(nickname);
   }
-  return { nickname: nickname, mode: 'deep', status: job.status, phase: job.phase, total: job.total, done: job.done, queuePosition: queuePosition_(nickname), error: job.error };
+  return { nickname: nickname, mode: 'deep', status: job.status, phase: job.phase, total: job.total, done: job.done, estimate: job.estimate, queuePosition: queuePosition_(nickname), error: job.error };
 }
 function safeSeasonStats_(uid) { try { return seasonStats_(uid, 4); } catch (e) { return []; } }
+// 정밀 분석 예상 판수: 최근 90일에 걸치는 시즌들의 랭크 판수 합 (게이지 표시용, 정확하지 않아도 됨)
+function estimateGames_(uid) {
+  try {
+    var cutoff = Date.now() - 90 * 86400000;
+    var seasons = seasons_().filter(function (s) { return s.id > 0 && new Date(String(s.end).replace(' ', 'T')).getTime() >= cutoff; });
+    var total = 0;
+    for (var i = 0; i < seasons.length && i < 3; i++) {
+      var d = apiGet_('/v2/user/stats/uid/' + uid + '/' + seasons[i].id + '/' + RANKED_MODE);
+      var u = (d.userStats || [])[0];
+      if (u && u.totalGames) total += u.totalGames;
+      Utilities.sleep(SLEEP_MS);
+    }
+    return total;
+  } catch (e) { return 0; }
+}
 function ensureSiteSheets_() {
   var ss = SpreadsheetApp.getActive();
   if (!ss.getSheetByName('작업') || !ss.getSheetByName('캐시유저') || !ss.getSheetByName('캐시경기')) ensureSiteSheets();
@@ -559,15 +575,15 @@ function jobStatus_(nickname) {
   var u = findCacheUser_(SpreadsheetApp.getActive().getSheetByName('캐시유저'), nickname);
   if (!job && u && u.status === 'done') return { nickname: nickname, status: 'done' };
   if (!job) return { nickname: nickname, status: 'none' };
-  return { nickname: nickname, status: job.status, phase: job.phase, total: job.total, done: job.done, queuePosition: queuePosition_(nickname), error: job.error };
+  return { nickname: nickname, status: job.status, phase: job.phase, total: job.total, done: job.done, estimate: job.estimate, queuePosition: queuePosition_(nickname), error: job.error };
 }
 function findJob_(nickname) {
   var js = SpreadsheetApp.getActive().getSheetByName('작업');
   if (!js || js.getLastRow() < 2) return null;
-  var vals = js.getRange(2, 1, js.getLastRow() - 1, 11).getValues();
+  var vals = js.getRange(2, 1, js.getLastRow() - 1, 12).getValues();
   for (var i = 0; i < vals.length; i++) {
     if (vals[i][0] === nickname && (vals[i][2] === 'queued' || vals[i][2] === 'running' || vals[i][2] === 'error')) {
-      return { row: i + 2, nickname: vals[i][0], uid: vals[i][1], status: vals[i][2], phase: vals[i][3], next: vals[i][4], pages: vals[i][5], total: vals[i][6], done: vals[i][7], error: vals[i][10] };
+      return { row: i + 2, nickname: vals[i][0], uid: vals[i][1], status: vals[i][2], phase: vals[i][3], next: vals[i][4], pages: vals[i][5], total: vals[i][6], done: vals[i][7], error: vals[i][10], estimate: Number(vals[i][11]) || 0 };
     }
   }
   return null;
