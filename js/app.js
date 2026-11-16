@@ -13,7 +13,7 @@
   const fmtS = x => x == null ? '-' : (x > 0 ? '+' : '') + Number(x).toFixed(1);
   const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#0ca30c', '#9085e9', '#e66767'];
 
-  const S = { boot: null, games: [], season: 'all', seasonStats: null, charts: [], lookup: null, selectedGame: null, notesFilter: { rank: 'all', char: 'all', reviewed: 'all' } };
+  const S = { boot: null, games: [], season: 'all', mode: 3, seasonStats: null, charts: [], lookup: null, selectedGame: null, notesFilter: { rank: 'all', char: 'all', reviewed: 'all' } };
 
   // ---------- 공통 ----------
   function toast(msg, err) { const t = $('#toast'); t.textContent = msg; t.hidden = false; t.classList.toggle('err', !!err); clearTimeout(t._h); t._h = setTimeout(() => t.hidden = true, err ? 6000 : 3000); }
@@ -23,7 +23,12 @@
     const c = new Chart(canvas, cfg); S.charts.push(c); return c;
   }
   function seasonName(id) { const s = (S.boot && S.boot.seasons || []).find(x => x.id === id); return s ? s.name : ('시즌ID ' + id); }
-  function filtered(games) { return S.season === 'all' ? games : games.filter(g => String(g.seasonId) === String(S.season)); }
+  function filtered(games) {
+    let L = S.mode === 'all' ? games : games.filter(g => g.mode === S.mode);
+    return S.season === 'all' ? L : L.filter(g => String(g.seasonId) === String(S.season));
+  }
+  const isCobalt = () => S.mode === 6;
+  const hasRp = () => S.mode === 3;
   function rankBadge(r) { return `<span class="rank r${r}">${r}</span>`; }
   function phaseHtml(g) { return `<span class="phase" title="1·2·3단계 데스"><span class="${g.d1 ? 'hot' : ''}">${g.d1}</span><span class="${g.d2 ? 'hot' : ''}">${g.d2}</span><span class="${g.d3 ? 'hot' : ''}">${g.d3}</span></span>`; }
   function tile(label, value, sub) { return el('div', { class: 'card tile' }, [el('div', { class: 'label' }, label), el('div', { class: 'value' }, value), sub ? el('div', { class: 'delta small muted', html: sub }) : null]); }
@@ -34,7 +39,17 @@
   }
 
   // ---------- 시즌 선택 ----------
-  function renderSeasonPick(games) {
+  function renderModePick(games) {
+    const sel = $('#mode-pick'); sel.innerHTML = '';
+    const modes = Analysis.modesIn(games);
+    if (!modes.includes(S.mode) && S.mode !== 'all') S.mode = modes.includes(3) ? 3 : (modes[0] || 'all');
+    modes.forEach(m => sel.appendChild(el('option', { value: m }, Analysis.MODE_NAME[m] + ' (' + games.filter(g => g.mode === m).length + '판)')));
+    sel.appendChild(el('option', { value: 'all' }, '전체 모드 (' + games.length + '판)'));
+    sel.value = String(S.mode);
+    sel.onchange = () => { S.mode = sel.value === 'all' ? 'all' : Number(sel.value); renderSeasonPick(S.games); route(); };
+  }
+  function renderSeasonPick(all) {
+    const games = S.mode === 'all' ? all : all.filter(g => g.mode === S.mode);
     const sel = $('#season-pick'); sel.innerHTML = '';
     const ids = Analysis.seasonsIn(games);
     sel.appendChild(el('option', { value: 'all' }, '저장된 전체 (' + games.length + '판)'));
@@ -87,8 +102,9 @@
   }
   async function loadBoot() {
     const b = await API.get('bootstrap');
-    S.boot = b; S.games = Analysis.enrich(b.games || [], b.meta);
+    S.boot = b; S.games = Analysis.enrich(b.games || [], b.meta, b.seasons);
     $('#owner-chip').textContent = b.owner.nickname + ' · 마지막 수집 ' + (b.owner.lastFetch || '-');
+    renderModePick(S.games);
     renderSeasonPick(S.games);
     API.get('seasonStats').then(st => { S.seasonStats = st; if (location.hash.includes('dashboard') || !location.hash) route(); }).catch(() => {});
   }
@@ -97,32 +113,57 @@
   views.dashboard = v => {
     const G = filtered(S.games);
     const sum = Analysis.summary(G), rv = Analysis.recentVsPrev(G);
-    v.appendChild(el('div', { class: 'section-head' }, [el('h1', {}, '대시보드'), el('span', { class: 'muted small' }, S.season === 'all' ? '저장된 전체 기간' : seasonName(S.season))]));
-    if (!G.length) { v.appendChild(el('div', { class: 'card empty' }, '이 시즌에 저장된 경기가 없습니다. 설정에서 [지금 갱신]을 누르거나 다른 시즌을 선택하세요.')); renderSeasonCards(v); return; }
+    v.appendChild(el('div', { class: 'section-head' }, [el('h1', {}, '대시보드'), el('span', { class: 'muted small' }, (S.mode === 'all' ? '전체 모드' : Analysis.MODE_NAME[S.mode]) + ' · ' + (S.season === 'all' ? '저장된 전체 기간' : seasonName(S.season)))]));
+    if (!G.length) { v.appendChild(el('div', { class: 'card empty' }, '이 모드·시즌에 저장된 경기가 없습니다. 설정에서 [지금 갱신]을 누르거나 다른 모드·시즌을 선택하세요.')); if (hasRp()) renderSeasonCards(v); return; }
+    if (isCobalt()) {
+      v.appendChild(el('div', { class: 'grid kpi' }, [
+        tile('판수', String(sum.n), '최근 10판 vs 이전 30판'),
+        tile('승률', fmtP(sum.winRate), deltaHtml(rv.recent.winRate, rv.prev.winRate, false, x => (x * 100).toFixed(0) + '%p')),
+        tile('K/D', fmtN(sum.kd), deltaHtml(rv.recent.kd, rv.prev.kd, false, x => x.toFixed(2))),
+        tile('평균 킬', fmtN(sum.avgKills), deltaHtml(rv.recent.avgKills, rv.prev.avgKills, false, x => x.toFixed(2))),
+        tile('평균 데스', fmtN(sum.avgDeaths), deltaHtml(rv.recent.avgDeaths, rv.prev.avgDeaths, true, x => x.toFixed(2))),
+        tile('분당 피해', String(sum.dmgPerMin), deltaHtml(rv.recent.dmgPerMin, rv.prev.dmgPerMin, false, x => x.toFixed(0))),
+        tile('팀 킬 평균', fmtN(sum.avgTeamKill, 1), deltaHtml(rv.recent.avgTeamKill, rv.prev.avgTeamKill, false, x => x.toFixed(1)))
+      ]));
+      const two = el('div', { class: 'grid two section' });
+      const c1 = el('div', { class: 'card' }, [el('h3', {}, '주차별 승률'), el('div', { class: 'chart-wrap' }, el('canvas'))]);
+      const c2 = el('div', { class: 'card' }, [el('h3', {}, '주차별 K/D'), el('div', { class: 'chart-wrap' }, el('canvas'))]);
+      two.append(c1, c2); v.appendChild(two);
+      const W = Analysis.byWeek(G);
+      chart($('canvas', c1), { type: 'line', data: { labels: W.map(w => w.key.replace(/^\d{4}-/, '')), datasets: [{ label: '승률', data: W.map(w => w.winRate == null ? null : Math.round(w.winRate * 100)), borderColor: SERIES[0], backgroundColor: SERIES[0], tension: .3, pointRadius: 4, borderWidth: 2 }] }, options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { afterLabel: ctx => `판수 ${W[ctx.dataIndex].n}` } } }, scales: { y: { min: 0, max: 100, ticks: { callback: x => x + '%' } } } } });
+      chart($('canvas', c2), { type: 'line', data: { labels: W.map(w => w.key.replace(/^\d{4}-/, '')), datasets: [{ label: 'K/D', data: W.map(w => w.kd), borderColor: SERIES[2], backgroundColor: SERIES[2], tension: .3, pointRadius: 4, borderWidth: 2 }] }, options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } } });
+      const sec = el('div', { class: 'section' }, [el('div', { class: 'section-head' }, [el('h2', {}, '최근 경기'), el('a', { href: '#/notes' }, '복기노트로 →')])]);
+      sec.appendChild(gamesTable(G.slice(-20).reverse(), g => { S.selectedGame = g.gameId; location.hash = '#/notes'; }));
+      v.appendChild(sec);
+      return;
+    }
     const k = el('div', { class: 'grid kpi' }, [
       tile('판수', String(sum.n), `최근 10판 vs 이전 30판`),
       tile('평균 등수', fmtN(sum.avgRank), deltaHtml(rv.recent.avgRank, rv.prev.avgRank, true, x => x.toFixed(2))),
       tile('1등 비율', fmtP(sum.winRate), deltaHtml(rv.recent.winRate, rv.prev.winRate, false, x => (x * 100).toFixed(0) + '%p')),
       tile('상위 3팀', fmtP(sum.top3Rate), deltaHtml(rv.recent.top3Rate, rv.prev.top3Rate, false, x => (x * 100).toFixed(0) + '%p')),
-      tile('판당 RP', fmtS(sum.avgRp), deltaHtml(rv.recent.avgRp, rv.prev.avgRp, false, x => x.toFixed(1))),
+      hasRp() ? tile('판당 RP', fmtS(sum.avgRp), deltaHtml(rv.recent.avgRp, rv.prev.avgRp, false, x => x.toFixed(1))) : tile('평균 킬', fmtN(sum.avgKills), deltaHtml(rv.recent.avgKills, rv.prev.avgKills, false, x => x.toFixed(2))),
       tile('초반 사망 경기', fmtP(sum.earlyDeathRate), deltaHtml(rv.recent.earlyDeathRate, rv.prev.earlyDeathRate, true, x => (x * 100).toFixed(0) + '%p')),
       tile('후반 도달(18분+)', fmtP(sum.lateReach), deltaHtml(rv.recent.lateReach, rv.prev.lateReach, false, x => (x * 100).toFixed(0) + '%p')),
-      tile('현재 RP', sum.rpEnd == null ? '-' : String(sum.rpEnd), sum.rpStart != null ? `시즌 시작 ${sum.rpStart}` : '')
+      hasRp() ? tile('현재 RP', sum.rpEnd == null ? '-' : String(sum.rpEnd), sum.rpStart != null ? `시즌 시작 ${sum.rpStart}` : '') : tile('평균 생존(분)', fmtN(sum.avgSurvive, 1), deltaHtml(rv.recent.avgSurvive, rv.prev.avgSurvive, false, x => x.toFixed(1)))
     ]);
     v.appendChild(k);
 
     const two = el('div', { class: 'grid two section' });
     const c1 = el('div', { class: 'card' }, [el('h3', {}, '주차별 평균 등수 (낮을수록 좋음)'), el('div', { class: 'chart-wrap' }, el('canvas'))]);
-    const c2 = el('div', { class: 'card' }, [el('h3', {}, 'RP 추이 (경기 후 RP)'), el('div', { class: 'chart-wrap' }, el('canvas'))]);
+    const c2 = el('div', { class: 'card' }, [el('h3', {}, hasRp() ? 'RP 추이 (경기 후 RP)' : '주차별 상위 3팀 비율'), el('div', { class: 'chart-wrap' }, el('canvas'))]);
     two.append(c1, c2); v.appendChild(two);
     const W = Analysis.byWeek(G);
     chart($('canvas', c1), { type: 'line', data: { labels: W.map(w => w.key.replace(/^\d{4}-/, '')), datasets: [{ label: '평균 등수', data: W.map(w => w.avgRank), borderColor: SERIES[0], backgroundColor: SERIES[0], tension: .3, pointRadius: 4, borderWidth: 2 }] },
       options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { afterLabel: ctx => `판수 ${W[ctx.dataIndex].n} · 1등 ${W[ctx.dataIndex].winRate != null ? (W[ctx.dataIndex].winRate * 100).toFixed(0) : 0}%` } } }, scales: { y: { reverse: true, min: 1, max: 8, ticks: { stepSize: 1 } } } } });
-    const R = G.filter(g => g.rp != null);
-    chart($('canvas', c2), { type: 'line', data: { labels: R.map(g => g.startDtm.slice(5, 16)), datasets: [{ label: 'RP', data: R.map(g => g.rp), borderColor: SERIES[2], backgroundColor: SERIES[2], pointRadius: 0, borderWidth: 2, tension: .1 }] },
-      options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { maxTicksLimit: 8 } } } } });
-
-    renderSeasonCards(v);
+    if (hasRp()) {
+      const R = G.filter(g => g.rp != null);
+      chart($('canvas', c2), { type: 'line', data: { labels: R.map(g => g.startDtm.slice(5, 16)), datasets: [{ label: 'RP', data: R.map(g => g.rp), borderColor: SERIES[2], backgroundColor: SERIES[2], pointRadius: 0, borderWidth: 2, tension: .1 }] },
+        options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { maxTicksLimit: 8 } } } } });
+      renderSeasonCards(v);
+    } else {
+      chart($('canvas', c2), { type: 'line', data: { labels: W.map(w => w.key.replace(/^\d{4}-/, '')), datasets: [{ label: '상위 3팀', data: W.map(w => w.top3Rate == null ? null : Math.round(w.top3Rate * 100)), borderColor: SERIES[2], backgroundColor: SERIES[2], tension: .3, pointRadius: 4, borderWidth: 2 }] }, options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100, ticks: { callback: x => x + '%' } } } } });
+    }
 
     const sec = el('div', { class: 'section' }, [el('div', { class: 'section-head' }, [el('h2', {}, '최근 경기'), el('a', { href: '#/notes' }, '복기노트로 →')])]);
     sec.appendChild(gamesTable(G.slice(-20).reverse(), g => { S.selectedGame = g.gameId; location.hash = '#/notes'; }));
@@ -141,11 +182,12 @@
     const notes = new Set((S.boot.notes || []).map(n => String(n.gameId)));
     const wrap = el('div', { class: 'card pad-0 tbl-wrap' });
     const t = el('table', { class: 'tbl' });
-    t.innerHTML = `<thead><tr><th>일시</th><th>캐릭터</th><th>등수</th><th class="num">K/A/D</th><th>단계별 데스</th><th class="num">생존</th><th class="num">RP</th><th>시작→사망</th><th>킬러</th><th>팀/로비 RP</th>${opts.noReview ? '' : '<th>복기</th>'}</tr></thead>`;
+    const showRp = S.mode === 3 || S.mode === 'all';
+    t.innerHTML = `<thead><tr><th>일시</th>${S.mode === 'all' ? '<th>모드</th>' : ''}<th>캐릭터</th><th>등수</th><th class="num">K/A/D</th><th>단계별 데스</th><th class="num">생존</th>${showRp ? '<th class="num">RP</th>' : ''}<th>시작→사망</th><th>킬러</th>${showRp ? '<th>팀/로비 RP</th>' : '<th>팀원</th>'}${opts.noReview ? '' : '<th>복기</th>'}</tr></thead>`;
     const tb = el('tbody');
     list.forEach(g => {
       const tr = el('tr', { class: onClick ? 'clickable' + (S.selectedGame === g.gameId ? ' selected' : '') : '' });
-      tr.innerHTML = `<td>${esc(g.startDtm.slice(5, 16))}</td><td>${esc(g.charName)} <span class="muted small">${esc(g.range)}</span></td><td>${rankBadge(g.gameRank)}</td><td class="num">${g.kills}/${g.assists}/${g.deaths}</td><td>${phaseHtml(g)}</td><td class="num">${fmtN(g.surviveMin, 1)}분</td><td class="num">${fmtS(g.rpChange)}</td><td>${esc(g.startAreaName)} → ${esc(g.deathAreaName || '-')}</td><td>${esc(g.killerChar || '-')}</td><td class="num">${g.teamAvgRp != null ? g.teamAvgRp + ' / ' + g.lobbyAvgRp : '-'}</td>${opts.noReview ? '' : `<td>${notes.has(String(g.gameId)) ? '<span class="badge good">완료</span>' : ''}</td>`}`;
+      tr.innerHTML = `<td>${esc(g.startDtm.slice(5, 16))}</td>${S.mode === 'all' ? `<td><span class="badge">${esc(g.modeName)}</span></td>` : ''}<td>${esc(g.charName)} <span class="muted small">${esc(g.range)}</span></td><td>${g.mode === 6 ? (g.gameRank === 1 ? '<span class="rank r1">승</span>' : '<span class="rank r7">패</span>') : rankBadge(g.gameRank)}</td><td class="num">${g.kills}/${g.assists}/${g.deaths}</td><td>${phaseHtml(g)}</td><td class="num">${fmtN(g.surviveMin, 1)}분</td>${showRp ? `<td class="num">${g.mode === 3 ? fmtS(g.rpChange) : '-'}</td>` : ''}<td>${esc(g.startAreaName)} → ${esc(g.deathAreaName || '-')}</td><td>${esc(g.killerChar || '-')}</td>${showRp ? `<td class="num">${g.teamAvgRp != null ? g.teamAvgRp + ' / ' + g.lobbyAvgRp : '-'}</td>` : `<td>${esc([g.mate1, g.mate2, g.mate3].filter(Boolean).join(', ') || '-')}</td>`}${opts.noReview ? '' : `<td>${notes.has(String(g.gameId)) ? '<span class="badge good">완료</span>' : ''}</td>`}`;
       if (onClick) tr.onclick = () => onClick(g);
       tb.appendChild(tr);
     });
@@ -154,8 +196,11 @@
 
   // ---------- 분석 ----------
   views.analysis = v => { v.appendChild(el('h1', {}, '분석')); renderAnalysis(v, filtered(S.games), true); };
-  function statTable(rows, label, extraCols = []) {
-    const cols = [[label, r => esc(r.key)], ['판수', r => r.n, 1], ['평균 등수', r => fmtN(r.avgRank), 1], ['1등', r => fmtP(r.winRate), 1], ['상위3', r => fmtP(r.top3Rate), 1], ['평균 킬', r => fmtN(r.avgKills), 1], ['판당 RP', r => fmtS(r.avgRp), 1], ['초반 사망', r => fmtP(r.earlyDeathRate), 1], ['후반 사망', r => fmtP(r.lateDeathRate), 1], ['생존(분)', r => fmtN(r.avgSurvive, 1), 1]].concat(extraCols);
+  function statTable(rows, label, extraCols = [], mode) {
+    const m = mode === undefined ? S.mode : mode;
+    const cols = m === 6
+      ? [[label, r => esc(r.key)], ['판수', r => r.n, 1], ['승률', r => fmtP(r.winRate), 1], ['K/D', r => fmtN(r.kd), 1], ['평균 킬', r => fmtN(r.avgKills), 1], ['평균 데스', r => fmtN(r.avgDeaths), 1], ['분당 피해', r => r.dmgPerMin, 1], ['팀 킬', r => fmtN(r.avgTeamKill, 1), 1]].concat(extraCols)
+      : [[label, r => esc(r.key)], ['판수', r => r.n, 1], ['평균 등수', r => fmtN(r.avgRank), 1], ['1등', r => fmtP(r.winRate), 1], ['상위3', r => fmtP(r.top3Rate), 1], ['평균 킬', r => fmtN(r.avgKills), 1]].concat(m === 3 ? [['판당 RP', r => fmtS(r.avgRp), 1]] : []).concat([['초반 사망', r => fmtP(r.earlyDeathRate), 1], ['후반 사망', r => fmtP(r.lateDeathRate), 1], ['생존(분)', r => fmtN(r.avgSurvive, 1), 1]]).concat(extraCols);
     return el('div', { class: 'card pad-0 tbl-wrap', html: `<table class="tbl"><thead><tr>${cols.map(c => `<th class="${c[2] ? 'num' : ''}">${c[0]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${cols.map(c => `<td class="${c[2] ? 'num' : ''}">${r.n ? c[1](r) : (c[2] ? '-' : esc(r.key))}</td>`).join('')}</tr>`).join('')}</tbody></table>` });
   }
   function barChart(canvas, labels, values, color, opts = {}) {
@@ -165,6 +210,7 @@
   function renderAnalysis(v, G, withNotes) {
     if (!G.length) { v.appendChild(el('div', { class: 'card empty' }, '분석할 경기가 없습니다.')); return; }
     const sum = Analysis.summary(G);
+    if (isCobalt() && withNotes) { renderCobaltAnalysis(v, G); return; }
     // 1) 생존 시간 구간별 등수 : 핵심 메시지
     const SB = Analysis.survivalBuckets(G), PD = Analysis.phaseDeaths(G);
     const sec1 = el('div', { class: 'section' }, [el('div', { class: 'section-head' }, [el('h2', {}, '어디서 탈락하는가'), el('span', { class: 'muted small' }, '생존 시간 구간별 성적과 데스가 발생한 단계')])]);
@@ -214,6 +260,24 @@
     }
   }
 
+  function renderCobaltAnalysis(v, G) {
+    const BC = Analysis.byCharacter(G), BR = Analysis.byRange(G), SI = Analysis.bySessionIndex(G), BH = Analysis.byHour(G), KL = Analysis.byKiller(G).slice(0, 10);
+    const sec1 = el('div', { class: 'section' }, [el('div', { class: 'section-head' }, [el('h2', {}, '코발트: 캐릭터와 사거리'), el('span', { class: 'muted small' }, '4대4 교전 모드라 승률·K/D·피해량이 중심')])]);
+    const g1 = el('div', { class: 'grid two' });
+    const c1 = el('div', { class: 'card' }, [el('h3', {}, '캐릭터별 승률 (5판 이상)'), el('div', { class: 'chart-wrap' }, el('canvas'))]);
+    g1.appendChild(c1); g1.appendChild(statTable(BR, '사거리')); sec1.appendChild(g1); sec1.appendChild(statTable(BC, '캐릭터')); v.appendChild(sec1);
+    const top = BC.filter(c => c.n >= 5).slice(0, 10);
+    barChart($('canvas', c1), top.map(c => c.key), top.map(c => Math.round((c.winRate || 0) * 100)), SERIES[0], { y: { min: 0, max: 100 }, tooltip: ctx => `승률 ${ctx.raw}% · ${top[ctx.dataIndex].n}판` });
+    const sec2 = el('div', { class: 'section' }, [el('div', { class: 'section-head' }, [el('h2', {}, '세션 피로'), el('span', { class: 'muted small' }, '하루 중 몇 판째인가 / 시작 시각')])]);
+    const g2 = el('div', { class: 'grid two' });
+    const c2 = el('div', { class: 'card' }, [el('h3', {}, '하루 n판째 승률'), el('div', { class: 'chart-wrap' }, el('canvas'))]);
+    const c3 = el('div', { class: 'card' }, [el('h3', {}, '시작 시각(시)별 승률'), el('div', { class: 'chart-wrap' }, el('canvas'))]);
+    g2.append(c2, c3); sec2.appendChild(g2); sec2.appendChild(statTable(SI, '하루 중 순서')); v.appendChild(sec2);
+    barChart($('canvas', c2), SI.map(s => s.key), SI.map(s => Math.round((s.winRate || 0) * 100)), SERIES[4], { y: { min: 0, max: 100 }, tooltip: ctx => `승률 ${ctx.raw}% · ${SI[ctx.dataIndex].n}판` });
+    barChart($('canvas', c3), BH.map(s => s.key + '시'), BH.map(s => Math.round((s.winRate || 0) * 100)), SERIES[2], { y: { min: 0, max: 100 }, tooltip: ctx => `승률 ${ctx.raw}% · ${BH[ctx.dataIndex].n}판` });
+    const sec3 = el('div', { class: 'section' }, [el('h2', {}, '나를 잡은 캐릭터')]); sec3.appendChild(statTable(KL, '킬러 캐릭터')); v.appendChild(sec3);
+  }
+
   // ---------- 복기노트 ----------
   views.notes = v => {
     const G = filtered(S.games).slice().reverse();
@@ -261,7 +325,7 @@
       right.appendChild(el('div', { class: 'info-grid card', style: 'margin-bottom:12px', html: [
         ['K/A/D', `${g.kills}/${g.assists}/${g.deaths}`], ['단계별 데스', `${g.d1} · ${g.d2} · ${g.d3}`], ['단계별 킬', `${g.k1} · ${g.k2} · ${g.k3}`], ['생존', fmtN(g.surviveMin, 1) + '분 / ' + fmtN(g.durationMin, 1) + '분'],
         ['RP 변동', fmtS(g.rpChange)], ['시작 지역', g.startAreaName], ['사망 지역', g.deathAreaName || '-'], ['사망 원인', g.causeOfDeath || '-'], ['킬러', g.killerChar || '-'],
-        ['팀원', [g.mate1, g.mate2].filter(Boolean).join(', ') || '-'], ['팀/로비 RP', g.teamAvgRp != null ? `${g.teamAvgRp} / ${g.lobbyAvgRp} (${g.teamAvgRp - g.lobbyAvgRp > 0 ? '+' : ''}${g.teamAvgRp - g.lobbyAvgRp})` : '-'], ['가한/받은 피해', `${g.dmgDealt.toLocaleString()} / ${g.dmgTaken.toLocaleString()}`]
+        ['팀원', [g.mate1, g.mate2, g.mate3].filter(Boolean).join(', ') || '-'], ['팀/로비 RP', g.teamAvgRp != null ? `${g.teamAvgRp} / ${g.lobbyAvgRp} (${g.teamAvgRp - g.lobbyAvgRp > 0 ? '+' : ''}${g.teamAvgRp - g.lobbyAvgRp})` : '-'], ['가한/받은 피해', `${g.dmgDealt.toLocaleString()} / ${g.dmgTaken.toLocaleString()}`]
       ].map(([k, val]) => `<div><div class="k">${k}</div><div>${esc(val)}</div></div>`).join('') }));
       const tags = S.boot.meta.tags || [];
       const tagSel = (val) => el('select', { class: 'tagsel' }, [el('option', { value: '' }, '태그 선택')].concat(tags.map(t => { const o = el('option', { value: t }, t); if (t === val) o.selected = true; return o; })));
@@ -315,14 +379,15 @@
     let timer = null;
     const show = (data) => {
       out.innerHTML = ''; killCharts();
-      const G = Analysis.enrich(data.games || [], S.boot.meta);
+      const G = Analysis.enrich(data.games || [], S.boot.meta, S.boot.seasons);
       S.lookup = Object.assign({}, data, { enriched: G });
       const sum = Analysis.summary(G);
       out.appendChild(el('div', { class: 'section-head' }, [el('h2', {}, `${data.nickname} · ${data.mode === 'deep' ? '정밀 분석' : '최근 기록 분석'} (${G.length}판)`), el('span', { class: 'muted small' }, data.mode === 'deep' ? `마지막 수집 ${data.lastFetch ? new Date(data.lastFetch).toLocaleString('ko-KR') : '-'}` : (data.cached ? '10분 캐시' : '방금 조회'))]));
       if (!G.length) { out.appendChild(el('div', { class: 'card empty' }, '최근 랭크 경기가 없습니다.')); return; }
       out.appendChild(el('div', { class: 'grid kpi' }, [tile('판수', String(sum.n)), tile('평균 등수', fmtN(sum.avgRank)), tile('1등 비율', fmtP(sum.winRate)), tile('상위 3팀', fmtP(sum.top3Rate)), tile('판당 RP', fmtS(sum.avgRp)), tile('초반 사망 경기', fmtP(sum.earlyDeathRate)), tile('후반 도달(18분+)', fmtP(sum.lateReach))]));
       if (data.seasonStats && data.seasonStats.length) { const save = S.seasonStats; S.seasonStats = data.seasonStats; renderSeasonCards(out); S.seasonStats = save; }
-      renderAnalysis(out, G, false);
+      const saveMode = S.mode; S.mode = 3;   // 닉네임 조회는 랭크 기준
+      try { renderAnalysis(out, G, false); } finally { S.mode = saveMode; }
       out.appendChild(el('div', { class: 'section' }, [el('h2', {}, '경기 목록'), gamesTable(G.slice().reverse().slice(0, 50), null, { noReview: true })]));
     };
     const poll = async (nick) => {
@@ -364,7 +429,7 @@
   registerView({ id: 'settings', label: '설정', order: 90, render: views.settings });
 
   // 기능 파일이 쓰는 공용 도구
-  window.ERV = { registerView, S, Analysis, route, helpers: { $, el, esc, fmtP, fmtN, fmtS, SERIES, tile, chart, rankBadge, phaseHtml, gamesTable, statTable, toast, filtered, seasonName, deltaHtml } };
+  window.ERV = { registerView, S, Analysis, route, helpers: { $, el, esc, fmtP, fmtN, fmtS, SERIES, tile, chart, rankBadge, phaseHtml, gamesTable, statTable, toast, filtered, seasonName, deltaHtml, isCobalt, hasRp } };
 
   // ---------- 시작 (기능 파일들이 먼저 등록되도록 다음 틱에) ----------
   setTimeout(async () => {

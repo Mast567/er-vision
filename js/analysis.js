@@ -4,13 +4,23 @@ const Analysis = (() => {
   const pct = (n, d) => d ? n / d : null;
   const r2 = x => x == null ? null : Math.round(x * 100) / 100;
 
-  function enrich(games, meta) {
+  const MODE_NAME = { 2: '일반', 3: '랭크', 6: '코발트' };
+  // 일반·코발트는 API가 시즌을 0으로 주므로 날짜로 시즌을 붙인다
+  function seasonByDate(d, seasons) {
+    const t = d.getTime();
+    const hit = (seasons || []).find(s => { const a = new Date(String(s.start).replace(' ', 'T')).getTime(), b = new Date(String(s.end).replace(' ', 'T')).getTime(); return t >= a && t < b; });
+    return hit ? hit.id : 0;
+  }
+  function enrich(games, meta, seasons) {
     const chars = (meta && meta.characters) || {}, areas = (meta && meta.areas) || {};
     return games.map(g => {
       const c = chars[String(g.characterNum)] || {};
       const sa = areas[String(g.startArea)] || {}, da = areas[String(g.deathArea)] || {};
       const d = new Date(String(g.startDtm).replace(' ', 'T'));
+      const mode = g.mode == null ? 3 : Number(g.mode);
+      const seasonId = (g.seasonId && g.seasonId > 0) ? g.seasonId : seasonByDate(d, seasons);
       return Object.assign({}, g, {
+        mode, modeName: MODE_NAME[mode] || ('모드' + mode), seasonId,
         charName: c.ko || c.name || String(g.characterNum),
         charEn: c.name || String(g.characterNum),
         range: c.range || '',
@@ -42,7 +52,11 @@ const Analysis = (() => {
       midDeathRate: pct(G.filter(g => (g.d2 || 0) > 0).length, n),
       avgSurvive: r2(mean(G.map(g => g.surviveMin || 0))), avgDmg: Math.round(mean(G.map(g => g.dmgDealt || 0)) || 0),
       lateReach: pct(G.filter(g => (g.surviveMin || 0) >= 18).length, n),
-      rpStart: G[0].rp, rpEnd: G[n - 1].rp
+      rpStart: G[0].rp, rpEnd: G[n - 1].rp,
+      avgTeamKill: r2(mean(G.map(g => g.teamKill || 0))),
+      kd: r2((G.reduce((s, g) => s + (g.kills || 0), 0)) / Math.max(1, G.reduce((s, g) => s + (g.deaths || 0), 0))),
+      dmgPerMin: Math.round(mean(G.map(g => (g.dmgDealt || 0) / Math.max(g.surviveMin || 1, 1))) || 0),
+      takenPerMin: Math.round(mean(G.map(g => (g.dmgTaken || 0) / Math.max(g.surviveMin || 1, 1))) || 0)
     };
   }
   function groupBy(G, keyFn, minN = 1) {
@@ -85,5 +99,7 @@ const Analysis = (() => {
   function seasonsIn(G) {
     const s = new Set(G.map(g => g.seasonId)); return [...s].sort((a, b) => b - a);
   }
-  return { enrich, summary, byCharacter, byRange, byStartArea, byWeek, byHour, byKiller, bySessionIndex, byTeamStrength, phaseDeaths, recentVsPrev, survivalBuckets, seasonsIn, mean, pct };
+  const MODE_ORDER = { 3: 0, 2: 1, 6: 2 };
+  function modesIn(G) { const s = new Set(G.map(g => g.mode)); return [...s].sort((a, b) => (MODE_ORDER[a] ?? 9) - (MODE_ORDER[b] ?? 9)); }
+  return { MODE_NAME, modesIn, enrich, summary, byCharacter, byRange, byStartArea, byWeek, byHour, byKiller, bySessionIndex, byTeamStrength, phaseDeaths, recentVsPrev, survivalBuckets, seasonsIn, mean, pct };
 })();

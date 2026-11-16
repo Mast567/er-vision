@@ -21,6 +21,7 @@ function extRun_(list, a, b) { (list || []).forEach(function (f) { try { f(a, b)
 
 var API_BASE = 'https://open-api.bser.io';
 var RANKED_MODE = 3;            // matchingMode 3 = 랭크
+var STORE_MODES = [2, 3, 6];    // 내 경기로 저장하는 모드: 2 일반, 3 랭크, 6 코발트 (닉네임 조회는 랭크만)
 var SLEEP_MS = 1100;            // API 한도: 초당 1회
 var MAX_GAMES_PER_RUN = 60;     // 내 경기 증분 수집 1회 최대
 var QUICK_PAGES = 5;            // 빠른 조회: 목록 페이지 수 (약 50판)
@@ -199,13 +200,14 @@ function normGame_(g) {
     startArea: num_(g.placeOfStart), deathArea: num_(g.placeOfDeath),
     causeOfDeath: g.causeOfDeath || '', killerChar: g.killerCharacter || '',
     teamNumber: g.teamNumber, nickname: g.nickname,
-    mate1: '', mate2: '', teamAvgRp: null, lobbyAvgRp: null
+    mode: g.matchingMode, teamMode: g.matchingTeamMode, victory: g.victory ? 1 : 0,
+    mate1: '', mate2: '', mate3: '', teamAvgRp: null, lobbyAvgRp: null
   };
 }
 function attachDetail_(n, det, charMap) {
   var team = det.filter(function (p) { return p.teamNumber === n.teamNumber; });
   var mates = team.filter(function (p) { return p.nickname !== n.nickname; }).map(function (p) { var c = charMap[String(p.characterNum)]; return c ? c.name : String(p.characterNum); });
-  n.mate1 = mates[0] || ''; n.mate2 = mates[1] || '';
+  n.mate1 = mates[0] || ''; n.mate2 = mates[1] || ''; n.mate3 = mates[2] || '';
   n.teamAvgRp = avg_(team.map(function (p) { return p.rankPoint; }));
   n.lobbyAvgRp = avg_(det.map(function (p) { return p.rankPoint; }));
   return n;
@@ -218,7 +220,8 @@ function stamp_() { cfg_().sheet.getRange('B5').setValue(Utilities.formatDate(ne
 // 경기기록 탭 열 순서 (A..AM). 수식 열(F,G,AE,AG)은 쓰지 않는다.
 var GAME_COLS = ['gameId', 'startDtm', 'seasonId', 'characterNum', 'characterName', null, null, 'gameRank', 'win', 'top3', 'kills', 'assists', 'deaths', 'teamKill',
   'dmgDealt', 'dmgTaken', 'surviveMin', 'durationMin', 'd1', 'd2', 'd3', 'k1', 'k2', 'k3', 'rpChange', 'rp', 'entryCost', 'rpGain', 'gambitRp',
-  'startArea', null, 'deathArea', null, 'causeOfDeath', 'killerChar', 'mate1', 'mate2', 'teamAvgRp', 'lobbyAvgRp'];
+  'startArea', null, 'deathArea', null, 'causeOfDeath', 'killerChar', 'mate1', 'mate2', 'teamAvgRp', 'lobbyAvgRp',
+  null, null, null, null, 'mode', 'teamMode', 'mate3'];   // AN~AQ 수식 열, AR 모드(2 일반/3 랭크/6 코발트), AS 팀 인원 모드, AT 팀원3
 
 function readOwnerGames_() {
   var sh = SpreadsheetApp.getActive().getSheetByName('경기기록');
@@ -231,6 +234,7 @@ function readOwnerGames_() {
     var o = {};
     GAME_COLS.forEach(function (k, i) { if (k) o[k] = r[i] === '' ? null : r[i]; });
     if (o.startDtm instanceof Date) o.startDtm = Utilities.formatDate(o.startDtm, 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
+    if (o.mode == null) o.mode = RANKED_MODE;   // 모드 열이 생기기 전 기록은 전부 랭크
     delete o.win; delete o.top3; delete o.characterName;
     out.push(o);
   });
@@ -257,7 +261,7 @@ function fetchNewGamesCore_() {
     var games = res.userGames || [];
     for (var i = 0; i < games.length; i++) {
       var g = games[i];
-      if (g.matchingMode !== RANKED_MODE) continue;
+      if (STORE_MODES.indexOf(g.matchingMode) < 0) continue;   // 랭크·일반·코발트만 저장
       if (existing[String(g.gameId)]) { stop = true; break; }
       newGames.push(g);
     }
@@ -270,7 +274,7 @@ function fetchNewGamesCore_() {
   var remaining = 0;
   if (newGames.length > MAX_GAMES_PER_RUN) { remaining = newGames.length - MAX_GAMES_PER_RUN; newGames = newGames.slice(0, MAX_GAMES_PER_RUN); }
 
-  var rowsA = [], rowsH = [], rowsAF = [], rowsAH = [], normed = [];
+  var rowsA = [], rowsH = [], rowsAF = [], rowsAH = [], rowsAR = [], normed = [];
   for (var k = 0; k < newGames.length; k++) {
     var g2 = newGames[k];
     Utilities.sleep(SLEEP_MS);
@@ -285,12 +289,15 @@ function fetchNewGamesCore_() {
       n.surviveMin, n.durationMin, n.d1, n.d2, n.d3, n.k1, n.k2, n.k3, n.rpChange, n.rp == null ? '' : n.rp, n.entryCost, n.rpGain, n.gambitRp == null ? '' : n.gambitRp, n.startArea == null ? '' : n.startArea]);
     rowsAF.push([n.deathArea == null ? '' : n.deathArea]);
     rowsAH.push([n.causeOfDeath, n.killerChar, n.mate1, n.mate2, n.teamAvgRp == null ? '' : n.teamAvgRp, n.lobbyAvgRp == null ? '' : n.lobbyAvgRp]);
+    rowsAR.push([n.mode, n.teamMode, n.mate3]);
   }
   var start = sh.getLastRow() + 1, cnt = rowsA.length;
+  if (sh.getMaxColumns() < 46) sh.insertColumnsAfter(sh.getMaxColumns(), 46 - sh.getMaxColumns());
   sh.getRange(start, 1, cnt, 5).setValues(rowsA);
   sh.getRange(start, 8, cnt, 23).setValues(rowsH);
   sh.getRange(start, 32, cnt, 1).setValues(rowsAF);
   sh.getRange(start, 34, cnt, 6).setValues(rowsAH);
+  sh.getRange(start, 44, cnt, 3).setValues(rowsAR);   // AR:AT
   stamp_();
   return { added: cnt, remaining: remaining, games: normed };
 }

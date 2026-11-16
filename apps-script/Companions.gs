@@ -7,12 +7,14 @@
 var EXT = (typeof EXT === 'undefined') ? { actions: {}, onOwnerGameDetail: [], bootstrap: [], ensureSheets: [] } : EXT;
 
 var COMPANION_SHEET = '팀원';
-var COMPANION_HEADERS = ['gameId', 'startDtm', 'mateNick1', 'mateChar1', 'mateRp1', 'mateNick2', 'mateChar2', 'mateRp2'];
+var COMPANION_HEADERS = ['gameId', 'startDtm', 'mateNick1', 'mateChar1', 'mateRp1', 'mateNick2', 'mateChar2', 'mateRp2', 'mateNick3', 'mateChar3', 'mateRp3'];
 
 function companionSheet_() {
   var ss = SpreadsheetApp.getActive();
   var sh = ss.getSheetByName(COMPANION_SHEET);
   if (!sh) { sh = ss.insertSheet(COMPANION_SHEET); sh.getRange(1, 1, 1, COMPANION_HEADERS.length).setValues([COMPANION_HEADERS]); sh.setFrozenRows(1); }
+  if (sh.getMaxColumns() < COMPANION_HEADERS.length) sh.insertColumnsAfter(sh.getMaxColumns(), COMPANION_HEADERS.length - sh.getMaxColumns());
+  if (String(sh.getRange(1, COMPANION_HEADERS.length).getValue()) !== COMPANION_HEADERS[COMPANION_HEADERS.length - 1]) sh.getRange(1, 1, 1, COMPANION_HEADERS.length).setValues([COMPANION_HEADERS]);
   return sh;
 }
 
@@ -20,9 +22,9 @@ function companionSheet_() {
 EXT.onOwnerGameDetail.push(function (n, det) {
   var sh = companionSheet_();
   var chars = charMap_();
-  var mates = (det || []).filter(function (p) { return p.teamNumber === n.teamNumber && p.nickname !== n.nickname; }).slice(0, 2);
+  var mates = (det || []).filter(function (p) { return p.teamNumber === n.teamNumber && p.nickname !== n.nickname; }).slice(0, 3);
   var row = [n.gameId, n.startDtm];
-  for (var i = 0; i < 2; i++) {
+  for (var i = 0; i < 3; i++) {   // 코발트는 팀원이 3명
     var p = mates[i];
     var c = p ? chars[String(p.characterNum)] : null;
     row.push(p ? p.nickname : '', p ? (c ? c.name : String(p.characterNum)) : '', p && typeof p.rankPoint === 'number' ? p.rankPoint : '');
@@ -37,7 +39,7 @@ EXT.bootstrap.push(function (data) {
   if (sh && sh.getLastRow() >= 2) {
     sh.getRange(2, 1, sh.getLastRow() - 1, COMPANION_HEADERS.length).getValues().forEach(function (r) {
       if (r[0] === '') return;
-      out.push({ gameId: r[0], mates: [{ nick: r[2], char: r[3], rp: r[4] === '' ? null : r[4] }, { nick: r[5], char: r[6], rp: r[7] === '' ? null : r[7] }].filter(function (m) { return m.nick; }) });
+      out.push({ gameId: r[0], mates: [{ nick: r[2], char: r[3], rp: r[4] === '' ? null : r[4] }, { nick: r[5], char: r[6], rp: r[7] === '' ? null : r[7] }, { nick: r[8], char: r[9], rp: r[10] === '' ? null : r[10] }].filter(function (m) { return m.nick; }) });
     });
   }
   data.teammates = out;

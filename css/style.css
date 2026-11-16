@@ -38,7 +38,7 @@ h3 { font-size: 14px; margin: 0 0 8px; color: var(--text-2); font-weight: 600; l
 .nav a:hover { background: var(--surface-2); color: var(--text); }
 .nav a.active { background: var(--surface-2); color: var(--text); font-weight: 600; }
 .topbar-right { display: flex; align-items: center; gap: 12px; }
-.season-pick { display: flex; gap: 6px; align-items: center; }
+.season-pick { display: flex; flex-direction: row; gap: 6px; align-items: center; }
 .chip { background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; font-size: 12px; color: var(--text-2); }
 select, input[type=text], input[type=url], input[type=password], input[type=number], textarea { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; color: var(--text); width: 100%; }
 select { width: auto; }

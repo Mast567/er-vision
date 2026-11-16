@@ -19,21 +19,23 @@ def norm(g):
       "d1":g.get("deathsPhaseOne",0),"d2":g.get("deathsPhaseTwo",0),"d3":g.get("deathsPhaseThree",0),"k1":g.get("killsPhaseOne",0),"k2":g.get("killsPhaseTwo",0),"k3":g.get("killsPhaseThree",0),
       "rpChange":gain+cost+gam,"rp":g.get("rankPoint"),"entryCost":cost,"rpGain":gain,"gambitRp":g.get("mmrGainGambit"),
       "startArea":num(g.get("placeOfStart")),"deathArea":num(g.get("placeOfDeath")),"causeOfDeath":g.get("causeOfDeath",""),"killerChar":g.get("killerCharacter",""),
-      "teamNumber":g["teamNumber"],"nickname":g["nickname"],"mate1":"","mate2":"","teamAvgRp":None,"lobbyAvgRp":None}
+      "teamNumber":g["teamNumber"],"nickname":g["nickname"],"mode":g["matchingMode"],"teamMode":g.get("matchingTeamMode"),"victory":1 if g.get("victory") else 0,"mate1":"","mate2":"","mate3":"","teamAvgRp":None,"lobbyAvgRp":None}
 def detail(n, det):
     team=[p for p in det if p.get("teamNumber")==n["teamNumber"]]
     mates=[CH.get(p["characterNum"],{}).get("name",str(p["characterNum"])) for p in team if p.get("nickname")!=n["nickname"]]
-    n["mate1"]=mates[0] if mates else ""; n["mate2"]=mates[1] if len(mates)>1 else ""
+    n["mate1"]=mates[0] if mates else ""; n["mate2"]=mates[1] if len(mates)>1 else ""; n["mate3"]=mates[2] if len(mates)>2 else ""
     t=[p["rankPoint"] for p in team if isinstance(p.get("rankPoint"),(int,float))]; l=[p["rankPoint"] for p in det if isinstance(p.get("rankPoint"),(int,float))]
     n["teamAvgRp"]=round(mean(t)) if t else None; n["lobbyAvgRp"]=round(mean(l)) if l else None; return n
-RANKED=sorted([g for g in G if g["matchingMode"]==3], key=lambda g:g["startDtm"])
+RANKED=sorted([g for g in G if g["matchingMode"] in (2,3,6)], key=lambda g:g["startDtm"])   # 저장 모드 전부
 def mates_of(g):
-    det=D.get(str(g["gameId"]),[]); team=[p for p in det if p.get("teamNumber")==g["teamNumber"] and p.get("nickname")!=g["nickname"]][:2]
+    det=D.get(str(g["gameId"]),[]); team=[p for p in det if p.get("teamNumber")==g["teamNumber"] and p.get("nickname")!=g["nickname"]][:3]
     return {"gameId":g["gameId"],"mates":[{"nick":p.get("nickname",""),"char":CH.get(p["characterNum"],{}).get("name",""),"rp":p.get("rankPoint")} for p in team]}
 TEAMMATES=[mates_of(g) for g in RANKED]
 # 테스트용: 일부 경기의 팀원을 같은 두 사람으로 바꿔 트리오가 생기게 한다
-for i,t in enumerate(TEAMMATES[-40:]):
+if os.environ.get("MOCK_FAKE_FRIENDS")=="1":
+  for i,t in enumerate(TEAMMATES[-40:]):
     if i%3!=2: t["mates"]=[{"nick":"친구A","char":"Jackie","rp":6800},{"nick":"친구B","char":"Nadine","rp":6900}]
+OWNER=os.environ.get("MOCK_NICK","돛대")
 
 GAMES=[detail(norm(g), D.get(str(g["gameId"]),[])) for g in RANKED]
 META={"characters":{str(c["code"]):{"code":c["code"],"name":c["name"],"ko":"","range":{"Melee":"근접","Range":"원거리"}.get(c["weaponRangeType"],"혼합")} for c in CH.values()},
@@ -58,7 +60,7 @@ class H(http.server.SimpleHTTPRequestHandler):
         a=p.get("action","ping")
         if a=="ping": return {"ok":True,"time":"now","needsToken":True}
         if p.get("token")!="test": return {"ok":False,"error":"비밀 코드가 틀렸습니다."}
-        if a=="bootstrap": return {"ok":True,"data":{"owner":{"nickname":"돛대","uid":"X","lastFetch":"2026-11-15 09:00"},"meta":META,"seasons":SEASONS,"games":GAMES,"notes":NOTES,"reports":REPORTS,"teammates":TEAMMATES}}
+        if a=="bootstrap": return {"ok":True,"data":{"owner":{"nickname":OWNER,"uid":"X","lastFetch":"2026-11-15 09:00"},"meta":META,"seasons":SEASONS,"games":GAMES,"notes":NOTES,"reports":REPORTS,"teammates":TEAMMATES}}
         if a=="seasonStats": return {"ok":True,"data":SST}
         if a=="refresh": return {"ok":True,"data":{"added":0,"remaining":0,"games":[]}}
         if a=="saveNote":
@@ -69,11 +71,11 @@ class H(http.server.SimpleHTTPRequestHandler):
         if a=="lookup":
             nick=p.get("nickname","")
             if nick=="없는사람": return {"ok":False,"error":"닉네임을 찾지 못했습니다: "+nick}
-            return {"ok":True,"data":{"nickname":nick,"uid":"Y","mode":"quick","games":GAMES[-50:],"seasonStats":SST[:1],"currentSeasonId":42,"fetchedAt":"now","cached":False}}
+            return {"ok":True,"data":{"nickname":nick,"uid":"Y","mode":"quick","games":[g for g in GAMES if g["mode"]==3][-50:],"seasonStats":SST[:1],"currentSeasonId":42,"fetchedAt":"now","cached":False}}
         if a in("deep","jobStatus"):
             nick=p.get("nickname",""); j=JOBS.setdefault(nick,{"t":time.time()}); el=time.time()-j["t"]
             if el<6: return {"ok":True,"data":{"nickname":nick,"mode":"deep","status":"running" if el>2 else "queued","phase":"list" if el<4 else "detail","total":331,"done":int(min(331,el*60)),"queuePosition":1}}
-            return {"ok":True,"data":{"nickname":nick,"uid":"Y","mode":"deep","status":"done","games":GAMES,"seasonStats":SST,"lastFetch":"2026-11-15T09:00:00Z","refreshed":False,"cooldownMs":600000}}
+            return {"ok":True,"data":{"nickname":nick,"uid":"Y","mode":"deep","status":"done","games":[g for g in GAMES if g["mode"]==3],"seasonStats":SST,"lastFetch":"2026-11-15T09:00:00Z","refreshed":False,"cooldownMs":600000}}
         return {"ok":False,"error":"unknown "+a}
 if __name__=="__main__":
     port=int(os.environ.get("PORT","8765")); print("mock on",port); http.server.ThreadingHTTPServer(("127.0.0.1",port),H).serve_forever()
