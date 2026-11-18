@@ -1,6 +1,6 @@
 /* ER Vision - 화면 로직 (해시 라우팅, 상태, 렌더링) */
 (() => {
-  const VERSION = 'v0.2';   // 작은 수정 v0.1n (v0.19 다음은 v0.1.10), 큰 기능 v0.2·v0.3, 정식 공개 v1
+  const VERSION = 'v0.21';   // 작은 수정 v0.1n (v0.19 다음은 v0.1.10), 큰 기능 v0.2·v0.3, 정식 공개 v1
   const $ = (sel, root = document) => root.querySelector(sel);
   const el = (tag, attrs = {}, children = []) => {
     const n = document.createElement(tag);
@@ -14,7 +14,7 @@
   const fmtS = x => x == null ? '-' : (x > 0 ? '+' : '') + Number(x).toFixed(1);
   const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#0ca30c', '#9085e9', '#e66767'];
 
-  const S = { boot: null, games: [], season: 'all', mode: 3, seasonStats: null, charts: [], lookup: null, selectedGame: null, notesFilter: { rank: 'all', char: 'all', reviewed: 'all' } };
+  const S = { boot: null, games: [], season: 'all', mode: 3, seasonStats: null, charts: [], lookup: null, lookupPending: null, selectedGame: null, notesFilter: { rank: 'all', char: 'all', reviewed: 'all' } };
 
   // ---------- 공통 ----------
   function toast(msg, err) { const t = $('#toast'); t.textContent = msg; t.hidden = false; t.classList.toggle('err', !!err); clearTimeout(t._h); t._h = setTimeout(() => t.hidden = true, err ? 6000 : 3000); }
@@ -372,13 +372,21 @@
   views.lookup = v => {
     v.appendChild(el('h1', {}, '닉네임 조회'));
     v.appendChild(el('p', { class: 'muted', html: '<b>최근 기록 분석</b>은 최근 약 50판을 몇 초 안에 보여줍니다(팀원·로비 RP 제외). <b>정밀 분석</b>은 90일 전체와 경기별 상세를 가져오며, 처음 보는 닉네임은 수 분이 걸리고 이후에는 새 경기만 더합니다(10분 간격).' }));
-    const inp = el('input', { type: 'text', placeholder: '닉네임', style: 'max-width:260px' }); inp.value = S.lookup ? S.lookup.nickname : '';
+    const inp = el('input', { type: 'text', placeholder: '닉네임', style: 'max-width:260px' }); inp.value = S.lookupPending || (S.lookup ? S.lookup.nickname : '');
     const b1 = el('button', { class: 'btn primary' }, '최근 기록 분석'), b2 = el('button', { class: 'btn' }, '정밀 분석');
     const status = el('div', { class: 'muted small', style: 'margin:8px 0' });
     const out = el('div');
     v.appendChild(el('div', { class: 'row' }, [inp, b1, b2])); v.appendChild(status); v.appendChild(out);
     let pollId = 0;
+    // 그리다가 오류가 나도 빈 화면으로 두지 않는다.
     const show = (data) => {
+      try { drawResult(data); } catch (e) {
+        console.error(e);
+        out.innerHTML = '';
+        out.appendChild(el('div', { class: 'card empty' }, `결과를 그리는 중 오류가 났습니다: ${e.message}. 이 문구를 알려주세요.`));
+      }
+    };
+    const drawResult = (data) => {
       out.innerHTML = ''; killCharts();
       const G = Analysis.enrich(data.games || [], S.boot.meta, S.boot.seasons);
       S.lookup = Object.assign({}, data, { enriched: G });
@@ -394,8 +402,8 @@
     const poll = async (nick) => {
       try {
         const d = await API.get('jobStatus', { nickname: nick });
-        if (d.status === 'done') { status.textContent = '수집 완료. 결과를 불러옵니다...'; const full = await API.get('deep', { nickname: nick }); status.textContent = ''; show(full); b1.disabled = b2.disabled = false; return true; }
-        if (d.status === 'error' || d.status === 'none') { status.textContent = d.status === 'error' ? '오류: ' + d.error : '작업을 찾지 못했습니다. 정밀 분석을 다시 누르세요.'; b1.disabled = b2.disabled = false; return true; }
+        if (d.status === 'done') { status.textContent = '수집 완료. 결과를 불러옵니다...'; const full = await API.get('deep', { nickname: nick }); S.lookupPending = null; status.textContent = ''; show(full); b1.disabled = b2.disabled = false; return true; }
+        if (d.status === 'error' || d.status === 'none') { S.lookupPending = null; status.textContent = d.status === 'error' ? '오류: ' + d.error : '작업을 찾지 못했습니다. 정밀 분석을 다시 누르세요.'; b1.disabled = b2.disabled = false; return true; }
         // 게이지: 목록 단계 0~20% (예상 판수 대비), 상세 단계 20~100%
         const est = d.estimate || d.total || 0;
         let pct = 0;
@@ -418,8 +426,10 @@
       loop();
     };
     b1.onclick = async () => { const nick = inp.value.trim(); if (!nick) return; b1.disabled = b2.disabled = true; status.textContent = '조회 중...'; try { const d = await API.get('lookup', { nickname: nick }); status.textContent = ''; show(d); } catch (e) { status.textContent = '실패: ' + e.message; } b1.disabled = b2.disabled = false; };
-    b2.onclick = async () => { const nick = inp.value.trim(); if (!nick) return; b1.disabled = b2.disabled = true; status.textContent = '정밀 분석 요청 중...'; try { const d = await API.get('deep', { nickname: nick }); if (d.status === 'done') { status.textContent = ''; show(d); b1.disabled = b2.disabled = false; } else { status.textContent = '수집을 시작했습니다. 이 화면을 열어 두면 가장 빠르고, 닫아도 서버가 천천히 이어서 모읍니다.'; startPolling(nick); } } catch (e) { status.textContent = '실패: ' + e.message; b1.disabled = b2.disabled = false; } };
-    if (S.lookup && S.lookup.games) show(S.lookup);
+    b2.onclick = async () => { const nick = inp.value.trim(); if (!nick) return; b1.disabled = b2.disabled = true; status.textContent = '정밀 분석 요청 중...'; try { const d = await API.get('deep', { nickname: nick }); if (d.status === 'done') { status.textContent = ''; show(d); b1.disabled = b2.disabled = false; } else { status.textContent = '수집을 시작했습니다. 이 화면을 열어 두면 가장 빠르고, 닫아도 서버가 천천히 이어서 모읍니다.'; S.lookupPending = nick; startPolling(nick); } } catch (e) { status.textContent = '실패: ' + e.message; b1.disabled = b2.disabled = false; } };
+    // 수집 중에 다른 화면에 다녀오면 이어서 확인한다.
+    if (S.lookupPending) { b1.disabled = b2.disabled = true; status.textContent = `${S.lookupPending} 정밀 분석 상태를 확인하는 중...`; startPolling(S.lookupPending); }
+    else if (S.lookup && S.lookup.games) show(S.lookup);
   };
 
   // ---------- 설정 ----------
