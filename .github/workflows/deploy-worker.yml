@@ -26,9 +26,9 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       WRANGLER_SEND_METRICS: "false"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -60,7 +60,8 @@ jobs:
         run: npx wrangler d1 migrations apply er-vision --remote
 
       - name: 배포
-        run: npx wrangler deploy
+        # 처음 만드는 Worker는 Cloudflare 쪽 반영이 늦어 후속 설정이 실패할 때가 있어 한 번 더 시도한다
+        run: npx wrangler deploy || (sleep 20 && npx wrangler deploy)
 
       - name: 비밀값 등록
         env:
