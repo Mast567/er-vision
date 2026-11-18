@@ -24,10 +24,17 @@ const API = (() => {
     if (!j.ok) throw new Error(j.error || '요청 실패');
     return j.data;
   }
+  // 지금 연결이 아닌 다른 데이터 창구로 보낼 때 (데이터 옮기기)
+  async function call(url, token, action, body = {}) {
+    const r = await fetch(url, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action, token, ...body }) });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || '요청 실패');
+    return j.data;
+  }
   async function ping(url) {
     const u = new URL(url); u.searchParams.set('action', 'ping');
     const r = await fetch(u.toString(), { redirect: 'follow' });
     return r.json();
   }
-  return { store, get, post, ping };
+  return { store, get, post, call, ping };
 })();

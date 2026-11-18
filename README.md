@@ -3,7 +3,8 @@
 이터널 리턴 랭크 복기 사이트. 경기 기록을 자동으로 모으고, 어디서 탈락하는지 분석하고, 리플레이를 보며 복기노트를 쓰고, 코칭 리포트를 읽는다.
 
 - 화면: 이 저장소 (GitHub Pages)
-- 데이터: 구글 시트 + Apps Script 웹 앱 (`apps-script/Code.gs`)
+- 데이터 창구: Cloudflare Workers + D1 (`worker/`), main에 올리면 GitHub Actions가 자동 배포 (v0.2부터)
+- 이전 데이터 창구: 구글 시트 + Apps Script (`apps-script/`), 옮긴 뒤에는 백업으로만 둔다
 - 설치: [`docs/설치안내.md`](docs/설치안내.md)
 
 ## 기능
@@ -33,10 +34,12 @@
 ## 데이터 흐름
 
 ```
-이터널 리턴 Open API ──(초당 1회)──> Apps Script ──> 구글 시트(경기기록·복기노트·캐시)
-                                          ▲
-GitHub Pages 화면 ──(비밀 코드 포함 요청)──┘
+이터널 리턴 Open API ──(초당 1회)──> Cloudflare Worker ──> D1 데이터베이스
+                                          ▲      ▲
+GitHub Pages 화면 ──(비밀 코드 포함 요청)──┘      └── 1분마다 cron: 정밀 분석 대기열, 내 경기 자동 수집(6시간마다), 메타 갱신(하루 1번)
 ```
+
+무료 플랜은 실행 1회당 CPU 10ms라서 경기 상세(한 판에 약 190KB)는 필요한 네 칸만 뽑아 쓰고, 한 번에 5판씩 나눠 처리한다. 사이트가 열려 있으면 브라우저가 연달아 요청해서 초당 1판 속도를 내고, 닫혀 있으면 cron이 1분에 5판씩 이어 간다. 처리량은 `worker/wrangler.toml`의 `DETAIL_PER_RUN`, `LIST_PAGES_PER_RUN`으로 조절한다.
 
 ## 구조
 
@@ -48,9 +51,13 @@ js/analysis.js      경기 배열 → 지표 (내 경기와 조회 경기가 공
 js/app.js           화면 로직 (해시 라우팅, 기능 등록 창구 ERV)
 js/features/*.js    기능 파일 (하나씩 격리, index.html 한 줄로 켜고 끔)
 js/vendor/chart.umd.js  Chart.js 4.4.1 (MIT)
-apps-script/Code.gs 데이터 창구 핵심 + 시트 메뉴 (확장 고리 EXT)
-apps-script/*.gs    기능별 데이터 창구 파일
-tools/mock_server.py 개발용 가짜 데이터 서버
+worker/src/index.js        데이터 창구 핵심 (Cloudflare Worker, 확장 고리 ext)
+worker/src/features/*.js   기능별 데이터 창구 파일
+worker/migrations/*.sql    D1 테이블 구조
+.github/workflows/deploy-worker.yml  자동 배포
+apps-script/*.gs           이전 데이터 창구 (구글 시트)
+tools/mock_server.py 개발용 가짜 데이터 창구 (Apps Script 흉내)
+tools/mock_er_api.py 개발용 가짜 게임 API (Worker 로컬 시험용)
 ```
 
 ## 버전

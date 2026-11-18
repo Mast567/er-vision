@@ -1,0 +1,13 @@
+{
+  "name": "er-vision-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local --test-scheduled",
+    "migrate:local": "wrangler d1 migrations apply er-vision --local",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "4.157.0"
+  }
+}
