@@ -1,6 +1,6 @@
 /* ER Vision - 화면 로직 (해시 라우팅, 상태, 렌더링) */
 (() => {
-  const VERSION = 'v0.16';   // 작은 수정은 v0.1n, 큰 기능 변화는 v0.2·v0.3, 정식 공개는 v1
+  const VERSION = 'v0.16';   // 작은 수정 v0.1n (v0.19 다음은 v0.1.10), 큰 기능 v0.2·v0.3, 정식 공개 v1
   const $ = (sel, root = document) => root.querySelector(sel);
   const el = (tag, attrs = {}, children = []) => {
     const n = document.createElement(tag);
