@@ -8,20 +8,23 @@
  * 기능별 코드는 src/features/*.js 에서 ext 고리에 등록한다.
  */
 import { ext } from './ext.js';
+import { startLogin, finishLogin, sessionUser, randomToken } from './auth.js';
 import './features/companions.js';
 
-const VERSION = 'v0.2';
+const VERSION = 'v0.3';
 const RANKED_MODE = 3;
 const STORE_MODES = [2, 3, 6];            // 내 경기로 저장: 2 일반, 3 랭크, 6 코발트 (닉네임 조회는 랭크만)
 const QUICK_PAGES = 5;                    // 최근 기록 분석: 목록 5페이지(약 50판)
 const REFRESH_COOLDOWN_MS = 10 * 60 * 1000;
 const OWNER_REFRESH_MS = 6 * 3600 * 1000;  // 내 경기 자동 수집 간격
 const META_REFRESH_MS = 24 * 3600 * 1000;
+const ACTIVE_MS = 60 * 86400 * 1000;        // 60일 안에 들어온 사람만 자동 수집 (게임 API는 90일까지 보관)
+const LIMITS = { quick: 40, deep: 5 };      // 사용자 1명이 하루에 쓸 수 있는 조회 횟수 (관리자 제외)
 const FETCH_CAP = 45;                     // 외부 호출 50회 제한에서 여유를 둔 값
 const DEFAULT_TAGS = ['초반 루트', '교전 진입 판단', '후반 포지셔닝', '아이템 타이밍', '팀 합류', '궁·스킬 사용', '정보 부족', '팀원 문제(통제 불가)'];
 
 // ---------------------------------------------------------------- 공통
-const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' };
+const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Access-Control-Max-Age': '86400' };
 const sendRaw = body => new Response(body, { headers: { ...CORS, 'Content-Type': 'application/json; charset=utf-8' } });
 const okRaw = raw => sendRaw('{"ok":true,"data":' + raw + '}');
 const okObj = obj => okRaw(JSON.stringify(obj));
@@ -250,57 +253,56 @@ async function lookupUid(ctx, nickname) {
   return uid;
 }
 
-// ---------------------------------------------------------------- 내 경기
-async function ownerInfo(ctx) {
-  const s = await settings(ctx);
-  return { nickname: s.nickname || '', uid: s.uid || '', lastFetchMs: toInt(s.lastFetchMs, 0), listNext: s.ownerListNext || '', metaAt: toInt(s.metaAt, 0) };
-}
-async function ownerUid(ctx, o) {
-  if (o.uid) return o.uid;
-  if (!o.nickname) throw new Error('내 닉네임이 설정되지 않았습니다. 사이트 설정에서 데이터를 옮기거나 닉네임을 지정하세요.');
-  const uid = await lookupUid(ctx, o.nickname);
-  await settingStmt(ctx, 'uid', uid).run();
+// ---------------------------------------------------------------- 내 경기 (로그인한 사용자별)
+async function ownerUid(ctx, u) {
+  if (u.uid) return u.uid;
+  if (!u.nickname) throw new Error('내 닉네임이 설정되지 않았습니다. 설정에서 닉네임을 저장하세요.');
+  const uid = await lookupUid(ctx, u.nickname);
+  await ctx.db.prepare('UPDATE users SET uid = ? WHERE id = ?').bind(uid, u.id).run();
+  u.uid = uid;
   return uid;
 }
-const pendingOwner = async ctx => (await ctx.db.prepare('SELECT COUNT(*) AS n FROM games WHERE detail_done = 0').first()).n;
+const pendingOwner = async (ctx, u) => (await ctx.db.prepare('SELECT COUNT(*) AS n FROM u_games WHERE user_id = ? AND detail_done = 0').bind(u.id).first()).n;
 
 // 새 경기 목록 → (상세 없이) 저장 → 상세 채우기. 한 번에 다 못 하면 다음 실행이 이어 받는다.
-async function ownerRefresh(ctx) {
-  const o = await ownerInfo(ctx);
-  const uid = await ownerUid(ctx, o);
-  let next = o.listNext || null, pages = 0, added = 0, complete = false;
+async function ownerRefresh(ctx, u) {
+  const uid = await ownerUid(ctx, u);
+  ctx.user = u;
+  let next = u.list_next || null, pages = 0, added = 0, complete = false;
   try {
     while (pages < ctx.listPages) {
       const res = await ctx.api.get(`/v1/user/games/uid/${uid}` + (next ? `?next=${next}` : ''));
       const all = res.userGames || [];
       const list = all.filter(g => STORE_MODES.includes(g.matchingMode));
-      const have = await existingIds(ctx, 'SELECT game_id FROM games WHERE game_id IN (?*)', list.map(g => g.gameId));
+      const have = await existingIds(ctx, 'SELECT game_id FROM u_games WHERE user_id = ? AND game_id IN (?*)', list.map(g => g.gameId), [u.id]);
       const fresh = [];
       let hit = false;
       for (const g of list) { if (have.has(g.gameId)) { hit = true; break; } fresh.push(normGame(g)); }
       if (fresh.length) {
-        await batchAll(ctx, fresh.map(n => ctx.db.prepare('INSERT OR IGNORE INTO games (game_id, start_dtm, season_id, mode, json, detail_done) VALUES (?, ?, ?, ?, ?, 0)').bind(n.gameId, n.startDtm, n.seasonId, n.mode, JSON.stringify(n))));
+        await batchAll(ctx, fresh.map(n => ctx.db.prepare('INSERT OR IGNORE INTO u_games (user_id, game_id, start_dtm, season_id, mode, json, detail_done) VALUES (?, ?, ?, ?, ?, ?, 0)').bind(u.id, n.gameId, n.startDtm, n.seasonId, n.mode, JSON.stringify(n))));
         added += fresh.length;
       }
       pages++; next = res.next || null;
       if (hit || !next || !all.length) { complete = true; break; }
     }
   } catch (e) { if (!e.budget) throw e; }
-  await batchAll(ctx, [settingStmt(ctx, 'ownerListNext', complete ? '' : (next || '')), settingStmt(ctx, 'lastFetchMs', Date.now())]);
+  u.list_next = complete ? '' : String(next || '');
+  u.last_fetch_ms = Date.now();
+  await ctx.db.prepare('UPDATE users SET list_next = ?, last_fetch_ms = ? WHERE id = ?').bind(u.list_next, u.last_fetch_ms, u.id).run();
 
   await ctx.loadChars();
-  const pend = (await ctx.db.prepare('SELECT game_id, json FROM games WHERE detail_done = 0 ORDER BY start_dtm LIMIT ?').bind(ctx.detailPerRun).all()).results;
+  const pend = (await ctx.db.prepare('SELECT game_id, json FROM u_games WHERE user_id = ? AND detail_done = 0 ORDER BY start_dtm LIMIT ?').bind(u.id, ctx.detailPerRun).all()).results;
   for (const row of pend) {
     if (ctx.api.left <= 0) break;
     const n = JSON.parse(row.json);
     let players = [];
     try { players = await ctx.api.players(n.gameId); } catch (e) { if (e.budget) break; }
     attachDetail(n, players, ctx.charName);
-    const stmts = [ctx.db.prepare('UPDATE games SET json = ?, detail_done = 1 WHERE game_id = ?').bind(JSON.stringify(n), n.gameId)];
-    for (const h of ext.onOwnerGameDetail) { try { const s = h(ctx, n, players); if (s) stmts.push(s); } catch (e) { console.log('ext', e); } }
+    const stmts = [ctx.db.prepare('UPDATE u_games SET json = ?, detail_done = 1 WHERE user_id = ? AND game_id = ?').bind(JSON.stringify(n), u.id, n.gameId)];
+    for (const h of ext.onOwnerGameDetail) { try { const st = h(ctx, n, players); if (st) stmts.push(st); } catch (e) { console.log('ext', e); } }
     await ctx.db.batch(stmts);
   }
-  const remaining = await pendingOwner(ctx);
+  const remaining = await pendingOwner(ctx, u);
   return { added, remaining, listing: complete ? 'done' : 'more' };
 }
 
@@ -466,7 +468,7 @@ async function quickLookup(ctx, nickname) {
   return okRaw(raw);
 }
 
-// ---------------------------------------------------------------- 복기노트·코칭 리포트
+// ---------------------------------------------------------------- 복기노트·코칭 리포트 (사용자별)
 const NOTE_FIELDS = ['moment', 'situation', 'tag1', 'tag2', 'tag3', 'good', 'nextAction', 'free', 'reviewedAt', 'minutes', 'lesson'];
 function noteObj(p) {
   const n = { gameId: Number(p.gameId) };
@@ -475,35 +477,94 @@ function noteObj(p) {
   if (!n.reviewedAt) n.reviewedAt = kst(Date.now()).slice(0, 10);
   return n;
 }
-const noteStmt = (ctx, n) => ctx.db.prepare('INSERT OR REPLACE INTO notes (game_id, json, updated_at) VALUES (?, ?, ?)').bind(n.gameId, JSON.stringify(n), Date.now());
-const reportStmt = (ctx, r) => ctx.db.prepare('INSERT INTO reports (date, scope, body, next) VALUES (?, ?, ?, ?)').bind(r.date || kst(Date.now()).slice(0, 10), r.scope || '', r.body || '', r.next || '');
-const readNotes = async ctx => joinRows((await ctx.db.prepare('SELECT json FROM notes ORDER BY game_id').all()).results);
-const readReports = async ctx => JSON.stringify((await ctx.db.prepare('SELECT date, scope, body, next FROM reports ORDER BY id').all()).results);
+// 공유 링크(share_id)는 노트를 고쳐 써도 유지한다
+const noteStmt = (ctx, uid, n) => ctx.db.prepare('INSERT INTO u_notes (user_id, game_id, json, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, game_id) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at').bind(uid, n.gameId, JSON.stringify(n), Date.now());
+const reportStmt = (ctx, uid, r) => ctx.db.prepare('INSERT INTO u_reports (user_id, date, scope, body, next) VALUES (?, ?, ?, ?, ?)').bind(uid, r.date || kst(Date.now()).slice(0, 10), r.scope || '', r.body || '', r.next || '');
+const readNotes = async (ctx, uid) => joinRows((await ctx.db.prepare('SELECT json FROM u_notes WHERE user_id = ? ORDER BY game_id').bind(uid).all()).results);
+const readShares = async (ctx, uid) => JSON.stringify((await ctx.db.prepare('SELECT game_id AS gameId, share_id AS id FROM u_notes WHERE user_id = ? AND share_id IS NOT NULL').bind(uid).all()).results);
+const readReports = async (ctx, uid) => JSON.stringify((await ctx.db.prepare('SELECT date, scope, body, next FROM u_reports WHERE user_id = ? ORDER BY id').bind(uid).all()).results);
+const readGames = async (ctx, uid) => joinRows((await ctx.db.prepare('SELECT json FROM u_games WHERE user_id = ? ORDER BY start_dtm').bind(uid).all()).results);
 
-// ---------------------------------------------------------------- 데이터 옮기기 (Apps Script 시트 또는 백업 파일에서)
-async function importData(ctx, kind, items, opts = {}) {
+async function shareNote(ctx, u, gameId) {
+  const row = await ctx.db.prepare('SELECT share_id FROM u_notes WHERE user_id = ? AND game_id = ?').bind(u.id, gameId).first();
+  if (!row) throw new Error('복기노트를 먼저 저장하세요.');
+  if (row.share_id) return { gameId, id: row.share_id };
+  const id = randomToken(16);
+  await ctx.db.prepare('UPDATE u_notes SET share_id = ? WHERE user_id = ? AND game_id = ?').bind(id, u.id, gameId).run();
+  return { gameId, id };
+}
+// 공유 링크로 보는 노트: 로그인 없이. 닉네임·계정 정보는 내보내지 않는다.
+async function sharedNote(ctx, id) {
+  if (!id) throw new Error('링크가 올바르지 않습니다.');
+  const n = await ctx.db.prepare('SELECT user_id, game_id, json FROM u_notes WHERE share_id = ?').bind(id).first();
+  if (!n) throw new Error('공유가 꺼졌거나 없는 링크입니다.');
+  const g = await ctx.db.prepare('SELECT json FROM u_games WHERE user_id = ? AND game_id = ?').bind(n.user_id, n.game_id).first();
+  let game = null;
+  if (g) { game = JSON.parse(g.json); delete game.nickname; }
+  return okRaw('{"note":' + n.json + ',"game":' + (game ? JSON.stringify(game) : 'null') + ',"meta":' + await metaRaw(ctx) + '}');
+}
+
+// ---------------------------------------------------------------- 하루 사용량 제한
+async function useQuota(ctx, u, kind) {
+  if (u.is_admin) return;
+  const key = `rl:${kind}:${u.id}:${kst(Date.now()).slice(0, 10)}`;
+  const n = toInt(await kvGet(ctx, key), 0);
+  if (n >= LIMITS[kind]) throw new Error(`오늘 쓸 수 있는 ${kind === 'deep' ? '정밀 분석' : '최근 기록 분석'} 횟수(${LIMITS[kind]}회)를 다 썼습니다. 내일 다시 시도하세요.`);
+  await kvPut(ctx, key, String(n + 1), 2 * 86400);
+}
+
+// ---------------------------------------------------------------- 기존 데이터 가져오기 (v0.2까지 한 사람용으로 쌓은 것)
+// 예전 비밀 코드(SITE_TOKEN)를 아는 사람이 한 번만 가져갈 수 있고, 가져간 사람은 관리자가 된다. 원본 테이블은 지우지 않는다.
+async function claimLegacy(ctx, u, token) {
+  if (!ctx.env.SITE_TOKEN || String(token || '') !== ctx.env.SITE_TOKEN) throw new Error('예전 비밀 코드가 틀렸습니다.');
+  const s = await settings(ctx);
+  if (s.legacyClaimedBy && s.legacyClaimedBy !== String(u.id)) throw new Error('기존 데이터는 이미 다른 계정으로 옮겨졌습니다.');
+  const db = ctx.db, id = u.id;
+  await db.batch([
+    db.prepare('INSERT OR IGNORE INTO u_games (user_id, game_id, start_dtm, season_id, mode, json, detail_done) SELECT ?, game_id, start_dtm, season_id, mode, json, detail_done FROM games').bind(id),
+    db.prepare('INSERT OR IGNORE INTO u_notes (user_id, game_id, json, updated_at) SELECT ?, game_id, json, updated_at FROM notes').bind(id),
+    db.prepare('INSERT INTO u_reports (user_id, date, scope, body, next) SELECT ?, date, scope, body, next FROM reports WHERE NOT EXISTS (SELECT 1 FROM u_reports WHERE user_id = ?)').bind(id, id),
+    db.prepare('INSERT OR IGNORE INTO u_teammates (user_id, game_id, json) SELECT ?, game_id, json FROM teammates').bind(id),
+    db.prepare('UPDATE users SET nickname = ?, uid = ?, last_fetch_ms = ?, list_next = ?, is_admin = 1 WHERE id = ?').bind(s.nickname || u.nickname || '', s.uid || u.uid || '', toInt(s.lastFetchMs, 0), '', id),
+    settingStmt(ctx, 'legacyClaimedBy', String(id))
+  ]);
+  const c = await db.prepare('SELECT (SELECT COUNT(*) FROM u_games WHERE user_id = ?) AS games, (SELECT COUNT(*) FROM u_notes WHERE user_id = ?) AS notes').bind(id, id).first();
+  return { games: c.games, notes: c.notes };
+}
+
+async function deleteAccount(ctx, u) {
+  const db = ctx.db, id = u.id;
+  await db.batch(['u_games', 'u_notes', 'u_reports', 'u_teammates', 'sessions'].map(t => db.prepare(`DELETE FROM ${t} WHERE user_id = ?`).bind(id))
+    .concat([db.prepare('DELETE FROM users WHERE id = ?').bind(id)]));
+  return { deleted: true };
+}
+
+// ---------------------------------------------------------------- 데이터 옮기기 (백업 파일 → 내 계정)
+async function importData(ctx, u, kind, items, opts = {}) {
   if (!Array.isArray(items)) throw new Error('items가 배열이 아닙니다.');
   let stmts = [];
   if (kind === 'owner') {
     const o = items[0] || {};
     const ms = o.lastFetch ? Date.parse(String(o.lastFetch).replace(' ', 'T') + (String(o.lastFetch).length <= 16 ? ':00+09:00' : '')) : 0;
-    stmts = [settingStmt(ctx, 'nickname', o.nickname || ''), settingStmt(ctx, 'uid', o.uid || ''), settingStmt(ctx, 'lastFetchMs', Number.isFinite(ms) ? ms : 0), settingStmt(ctx, 'ownerListNext', '')];
+    stmts = [ctx.db.prepare("UPDATE users SET nickname = ?, uid = ?, last_fetch_ms = ?, list_next = '' WHERE id = ?").bind(o.nickname || '', o.uid || '', Number.isFinite(ms) ? ms : 0, u.id)];
   } else if (kind === 'games') {
     stmts = items.map(g => {
       const n = Object.assign({}, g, { gameId: Number(g.gameId), mode: g.mode == null ? RANKED_MODE : Number(g.mode) });
       // needDetail: 팀원 기록 없이 옮겨 온 경기는 상세를 다시 받아 팀원을 채운다
-      return ctx.db.prepare('INSERT OR REPLACE INTO games (game_id, start_dtm, season_id, mode, json, detail_done) VALUES (?, ?, ?, ?, ?, ?)').bind(n.gameId, String(n.startDtm), Number(n.seasonId) || 0, n.mode, JSON.stringify(n), opts.needDetail ? 0 : 1);
+      return ctx.db.prepare('INSERT OR REPLACE INTO u_games (user_id, game_id, start_dtm, season_id, mode, json, detail_done) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(u.id, n.gameId, String(n.startDtm), Number(n.seasonId) || 0, n.mode, JSON.stringify(n), opts.needDetail ? 0 : 1);
     });
   } else if (kind === 'notes') {
-    stmts = items.filter(n => n && n.gameId).map(n => noteStmt(ctx, noteObj(n)));
+    stmts = items.filter(n => n && n.gameId).map(n => noteStmt(ctx, u.id, noteObj(n)));
   } else if (kind === 'reports') {
-    stmts = [ctx.db.prepare('DELETE FROM reports')].concat(items.map(r => reportStmt(ctx, r)));
+    stmts = [ctx.db.prepare('DELETE FROM u_reports WHERE user_id = ?').bind(u.id)].concat(items.map(r => reportStmt(ctx, u.id, r)));
   } else if (kind === 'meta') {
+    if (!u.is_admin) return { kind, count: 0, skipped: '캐릭터 정보는 관리자만 바꿉니다' };
     const m = items[0] || {};
     for (const c of Object.values(m.characters || {})) stmts.push(ctx.db.prepare("INSERT INTO meta (kind, code, name, ko, range_type) VALUES ('character', ?, ?, ?, ?) ON CONFLICT(kind, code) DO UPDATE SET name = excluded.name, ko = CASE WHEN excluded.ko <> '' THEN excluded.ko ELSE meta.ko END, range_type = excluded.range_type").bind(Number(c.code), c.name || '', c.ko || '', c.range || ''));
     for (const a of Object.values(m.areas || {})) stmts.push(ctx.db.prepare("INSERT INTO meta (kind, code, name, ko, range_type) VALUES ('area', ?, ?, ?, '') ON CONFLICT(kind, code) DO UPDATE SET name = excluded.name, ko = CASE WHEN excluded.ko <> '' THEN excluded.ko ELSE meta.ko END").bind(Number(a.code), a.name || '', a.ko || ''));
     if (Array.isArray(m.tags) && m.tags.length) stmts.push(settingStmt(ctx, 'tags', JSON.stringify(m.tags)));
   } else if (ext.importers[kind]) {
+    ctx.user = u;
     stmts = ext.importers[kind](ctx, items);
   } else throw new Error('알 수 없는 kind: ' + kind);
   await batchAll(ctx, stmts);
@@ -512,75 +573,107 @@ async function importData(ctx, kind, items, opts = {}) {
 }
 
 // ---------------------------------------------------------------- bootstrap
-async function bootstrap(ctx) {
-  const o = await ownerInfo(ctx);
-  const [meta, seasonList, games, notes, reports] = await Promise.all([
-    metaRaw(ctx), seasons(ctx).catch(() => []),
-    ctx.db.prepare('SELECT json FROM games ORDER BY start_dtm').all().then(r => joinRows(r.results)),
-    readNotes(ctx), readReports(ctx)
+async function bootstrap(ctx, u) {
+  ctx.user = u;
+  const s = await settings(ctx);
+  const [meta, seasonList, games, notes, shares, reports] = await Promise.all([
+    metaRaw(ctx), seasons(ctx).catch(() => []), readGames(ctx, u.id), readNotes(ctx, u.id), readShares(ctx, u.id), readReports(ctx, u.id)
   ]);
   let extra = '';
   for (const h of ext.bootstrap) {
     try { const add = await h(ctx); for (const [k, v] of Object.entries(add)) extra += ',' + JSON.stringify(k) + ':' + v; } catch (e) { console.log('ext', e); }
   }
-  const owner = { nickname: o.nickname, uid: o.uid, lastFetch: kst(o.lastFetchMs) };
-  return okRaw('{"owner":' + JSON.stringify(owner) + ',"meta":' + meta + ',"seasons":' + JSON.stringify(seasonList) + ',"games":' + games + ',"notes":' + notes + ',"reports":' + reports + extra + '}');
+  const owner = { nickname: u.nickname, uid: u.uid, lastFetch: kst(u.last_fetch_ms) };
+  const me = { name: u.discord_name || '', admin: !!u.is_admin, legacyAvailable: !s.legacyClaimedBy && !!ctx.env.SITE_TOKEN, limits: LIMITS };
+  return okRaw('{"owner":' + JSON.stringify(owner) + ',"me":' + JSON.stringify(me) + ',"meta":' + meta + ',"seasons":' + JSON.stringify(seasonList) + ',"games":' + games + ',"notes":' + notes + ',"shares":' + shares + ',"reports":' + reports + extra + '}');
 }
 
 // ---------------------------------------------------------------- 웹 요청
 async function handle(request, env) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   const url = new URL(request.url);
+  if (url.pathname === '/auth/discord') return startLogin(env, env.DB, url);
+  if (url.pathname === '/auth/callback') return finishLogin(env, env.DB, url);
   const p = Object.fromEntries(url.searchParams);
   if (request.method === 'POST') { try { Object.assign(p, JSON.parse(await request.text())); } catch { /* 본문이 없으면 무시 */ } }
   const action = p.action || 'ping';
-  if (action === 'ping') return sendRaw(JSON.stringify({ ok: true, version: VERSION, backend: 'worker', needsToken: !!env.SITE_TOKEN, time: new Date().toISOString() }));
-  if (!env.SITE_TOKEN) return fail('SITE_TOKEN 비밀값이 설정되지 않았습니다.');
-  if (String(p.token || '') !== env.SITE_TOKEN) return fail('비밀 코드가 틀렸습니다.');
+  if (action === 'ping') return sendRaw(JSON.stringify({ ok: true, version: VERSION, backend: 'worker', auth: 'discord', loginReady: !!(env.DISCORD_CLIENT_ID && env.DISCORD_CLIENT_SECRET), time: new Date().toISOString() }));
   const ctx = makeCtx(env);
+  if (action === 'shared') return sharedNote(ctx, String(p.id || ''));
+
+  const u = await sessionUser(ctx.db, request, p);
+  if (!u) return sendRaw(JSON.stringify({ ok: false, error: '로그인이 필요합니다.', needLogin: true }));
+  ctx.user = u;
   const nick = String(p.nickname || '').trim();
+  const adminOnly = () => { if (!u.is_admin) throw new Error('관리자만 쓸 수 있습니다.'); };
   switch (action) {
-    case 'bootstrap': return bootstrap(ctx);
-    case 'games': return okRaw(joinRows((await ctx.db.prepare('SELECT json FROM games ORDER BY start_dtm').all()).results));
-    case 'seasonStats': { const o = await ownerInfo(ctx); return okObj(await seasonStats(ctx, p.uid || await ownerUid(ctx, o), toInt(p.limit, 8))); }
+    case 'bootstrap': return bootstrap(ctx, u);
+    case 'games': return okRaw(await readGames(ctx, u.id));
+    case 'seasonStats': return okObj(u.nickname || p.uid ? await seasonStats(ctx, p.uid || await ownerUid(ctx, u), toInt(p.limit, 8)) : []);
     case 'refresh': {
-      if (!(await lock(ctx, 'owner', 90000))) return okObj({ added: 0, remaining: await pendingOwner(ctx), busy: true });
-      try { return okObj(await ownerRefresh(ctx)); } finally { await unlock(ctx, 'owner'); }
+      if (!(await lock(ctx, 'owner:' + u.id, 90000))) return okObj({ added: 0, remaining: await pendingOwner(ctx, u), busy: true });
+      try { return okObj(await ownerRefresh(ctx, u)); } finally { await unlock(ctx, 'owner:' + u.id); }
     }
-    case 'notes': return okRaw(await readNotes(ctx));
-    case 'saveNote': { const n = noteObj(p); if (!n.gameId) throw new Error('gameId가 필요합니다.'); await noteStmt(ctx, n).run(); return okObj({ gameId: n.gameId }); }
-    case 'deleteNote': { const r = await ctx.db.prepare('DELETE FROM notes WHERE game_id = ?').bind(Number(p.gameId)).run(); return okObj({ deleted: r.meta.changes > 0 }); }
-    case 'reports': return okRaw(await readReports(ctx));
-    case 'saveReport': { await reportStmt(ctx, p).run(); return okObj({ saved: true }); }
-    case 'lookup': return quickLookup(ctx, nick);
-    case 'deep': return deepLookup(ctx, nick, p.force === '1' || p.force === true);
+    case 'notes': return okRaw(await readNotes(ctx, u.id));
+    case 'saveNote': { const n = noteObj(p); if (!n.gameId) throw new Error('gameId가 필요합니다.'); await noteStmt(ctx, u.id, n).run(); return okObj({ gameId: n.gameId }); }
+    case 'deleteNote': { const r = await ctx.db.prepare('DELETE FROM u_notes WHERE user_id = ? AND game_id = ?').bind(u.id, Number(p.gameId)).run(); return okObj({ deleted: r.meta.changes > 0 }); }
+    case 'shareNote': return okObj(await shareNote(ctx, u, Number(p.gameId)));
+    case 'unshareNote': { await ctx.db.prepare('UPDATE u_notes SET share_id = NULL WHERE user_id = ? AND game_id = ?').bind(u.id, Number(p.gameId)).run(); return okObj({ gameId: Number(p.gameId) }); }
+    case 'reports': return okRaw(await readReports(ctx, u.id));
+    case 'saveReport': { await reportStmt(ctx, u.id, p).run(); return okObj({ saved: true }); }
+    case 'lookup': {
+      if (!(await kvGet(ctx, 'quick:' + nick))) await useQuota(ctx, u, 'quick');
+      return quickLookup(ctx, nick);
+    }
+    case 'deep': {
+      const known = await ctx.db.prepare('SELECT 1 FROM cache_users WHERE nickname = ? UNION SELECT 1 FROM jobs WHERE nickname = ?').bind(nick, nick).first();
+      if (!known && nick) await useQuota(ctx, u, 'deep');
+      return deepLookup(ctx, nick, p.force === '1' || p.force === true);
+    }
     case 'jobStatus': return jobStatus(ctx, nick);
-    case 'import': return okObj(await importData(ctx, String(p.kind || ''), p.items, { needDetail: p.needDetail === true || p.needDetail === '1' }));
+    case 'import': return okObj(await importData(ctx, u, String(p.kind || ''), p.items, { needDetail: p.needDetail === true || p.needDetail === '1' }));
     case 'setOwner': {
       if (!nick) throw new Error('닉네임을 입력하세요.');
-      await batchAll(ctx, [settingStmt(ctx, 'nickname', nick), settingStmt(ctx, 'uid', ''), settingStmt(ctx, 'ownerListNext', '')]);
+      const uid = await lookupUid(ctx, nick);   // 없는 닉네임은 여기서 막는다
+      await ctx.db.prepare("UPDATE users SET nickname = ?, uid = ?, list_next = '', last_fetch_ms = 0 WHERE id = ?").bind(nick, uid, u.id).run();
       return okObj({ nickname: nick });
     }
-    case 'refreshMeta': return okObj(await refreshMeta(ctx));
-    case 'refreshKorean': return okObj(await refreshKorean(ctx));
+    case 'claimLegacy': return okObj(await claimLegacy(ctx, u, p.legacyToken));
+    case 'logout': { await ctx.db.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(u.tokenHash).run(); return okObj({ loggedOut: true }); }
+    case 'deleteAccount': return okObj(await deleteAccount(ctx, u));
+    case 'refreshMeta': adminOnly(); return okObj(await refreshMeta(ctx));
+    case 'refreshKorean': adminOnly(); return okObj(await refreshKorean(ctx));
     default:
       if (ext.actions[action]) return okObj(await ext.actions[action](ctx, p));
       return fail('알 수 없는 action: ' + action);
   }
 }
 
-// ---------------------------------------------------------------- 1분마다: 대기열 → 내 경기 → 메타
+// ---------------------------------------------------------------- 1분마다: 대기열 → 사용자 경기(가장 오래 안 걷은 사람 한 명) → 메타
+async function nextOwner(ctx) {
+  const now = Date.now();
+  return ctx.db.prepare(`SELECT * FROM users u WHERE u.nickname <> '' AND u.last_seen > ?
+    AND (u.list_next <> '' OR u.last_fetch_ms < ? OR EXISTS (SELECT 1 FROM u_games g WHERE g.user_id = u.id AND g.detail_done = 0))
+    ORDER BY u.last_fetch_ms LIMIT 1`).bind(now - ACTIVE_MS, now - OWNER_REFRESH_MS).first();
+}
 async function tick(env) {
   const ctx = makeCtx(env);
   if (!(await lock(ctx, 'tick', 55000))) return;
   try {
     if (await workJob(ctx)) return;
-    const o = await ownerInfo(ctx);
-    if (o.nickname && (o.listNext || Date.now() - o.lastFetchMs > OWNER_REFRESH_MS || await pendingOwner(ctx) > 0)) {
-      if (await lock(ctx, 'owner', 90000)) { try { await ownerRefresh(ctx); } finally { await unlock(ctx, 'owner'); } }
+    const u = await nextOwner(ctx);
+    if (u) {
+      if (await lock(ctx, 'owner:' + u.id, 90000)) {
+        try { await ownerRefresh(ctx, u); }
+        catch (e) {   // 닉네임이 바뀌었거나 없어진 사람 때문에 다른 사람 수집이 막히지 않게 순서를 뒤로 보낸다
+          console.log('owner refresh error', u.id, e && e.message);
+          await ctx.db.prepare('UPDATE users SET last_fetch_ms = ? WHERE id = ?').bind(Date.now(), u.id).run();
+        } finally { await unlock(ctx, 'owner:' + u.id); }
+      }
       return;
     }
-    if (Date.now() - o.metaAt > META_REFRESH_MS) await refreshMeta(ctx);
+    const s = await settings(ctx);
+    if (Date.now() - toInt(s.metaAt, 0) > META_REFRESH_MS) await refreshMeta(ctx);
   } catch (e) {
     console.log('tick error', e && e.message);
   } finally { await unlock(ctx, 'tick'); }

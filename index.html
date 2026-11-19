@@ -25,21 +25,16 @@
 <template id="tpl-gate">
   <section class="gate">
     <h1>ER Vision</h1>
-    <p class="muted">이터널 리턴 랭크 복기 노트. 데이터 창구 주소와 비밀 코드를 입력하면 시작됩니다.</p>
-    <label>데이터 창구 주소 (Apps Script 웹 앱 URL)<input id="gate-url" type="url" placeholder="https://script.google.com/macros/s/.../exec"></label>
-    <label>비밀 코드<input id="gate-token" type="password" placeholder="시트 메뉴 [ER 복기] > [5. 사이트 비밀 코드 설정]에서 정한 코드"></label>
-    <div class="row"><button class="btn primary" id="gate-go">연결</button><span id="gate-msg" class="muted"></span></div>
-    <details class="help"><summary>주소는 어디서 얻나요?</summary>
-      <ol>
-        <li>구글 시트에서 [확장 프로그램] → [Apps Script]를 연다.</li>
-        <li>오른쪽 위 [배포] → [새 배포] → 유형 선택(톱니) → [웹 앱].</li>
-        <li>실행 사용자: 나 / 액세스 권한: 모든 사용자 → [배포].</li>
-        <li>나오는 "웹 앱 URL"(…/exec로 끝남)을 위 칸에 붙인다.</li>
-      </ol>
+    <p class="muted">이터널 리턴 복기 노트. 내 경기 기록을 모아 분석하고, 판마다 복기노트를 남깁니다. 복기노트는 나만 볼 수 있습니다.</p>
+    <label id="gate-url-wrap">서버 주소<input id="gate-url" type="url" placeholder="https://er-vision.….workers.dev"></label>
+    <div class="row"><button class="btn primary" id="gate-go">디스코드로 로그인</button><span id="gate-msg" class="muted"></span></div>
+    <details class="help"><summary>무엇을 가져가나요?</summary>
+      <p>디스코드 고유번호와 표시 이름만 받습니다. 이메일, 친구 목록, 서버 목록은 받지 않습니다. 계정은 설정에서 언제든 삭제할 수 있습니다.</p>
     </details>
   </section>
 </template>
 
+<script src="js/config.js"></script>
 <script src="js/api.js"></script>
 <script src="js/analysis.js"></script>
 <script src="js/app.js"></script>

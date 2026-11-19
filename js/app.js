@@ -1,6 +1,6 @@
 /* ER Vision - 화면 로직 (해시 라우팅, 상태, 렌더링) */
 (() => {
-  const VERSION = 'v0.21';   // 작은 수정 v0.1n (v0.19 다음은 v0.1.10), 큰 기능 v0.2·v0.3, 정식 공개 v1
+  const VERSION = 'v0.3';   // 작은 수정 v0.1n (v0.19 다음은 v0.1.10), 큰 기능 v0.2·v0.3, 정식 공개 v1
   const $ = (sel, root = document) => root.querySelector(sel);
   const el = (tag, attrs = {}, children = []) => {
     const n = document.createElement(tag);
@@ -79,9 +79,10 @@
   function route() {
     killCharts();
     const hash = location.hash.replace(/^#\/?/, '') || 'dashboard';
-    const name = hash.split('?')[0];
+    const name = hash.split(/[/?]/)[0];
     document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('active', a.dataset.route === name));
     const v = $('#view'); v.innerHTML = '';
+    if (name === 'shared') { $('#season-pick-wrap').style.display = 'none'; renderShared(v, (hash.split('/')[1] || '').split('?')[0]); return; }
     if (!S.boot) { renderGate(v); return; }
     const def = registry.find(r => r.id === name) || registry.find(r => r.id === 'dashboard');
     $('#season-pick-wrap').style.display = def && def.season ? '' : 'none';
@@ -89,25 +90,64 @@
   }
   window.addEventListener('hashchange', route);
 
-  // ---------- 게이트 ----------
+  // ---------- 게이트 (로그인) ----------
   function renderGate(v) {
     $('#season-pick-wrap').style.display = 'none';
+    $('#owner-chip').textContent = '';
     v.appendChild($('#tpl-gate').content.cloneNode(true));
-    $('#gate-url').value = API.store.url; $('#gate-token').value = API.store.token;
-    $('#gate-go').onclick = async () => {
-      const url = $('#gate-url').value.trim(), token = $('#gate-token').value.trim(), msg = $('#gate-msg');
-      if (!url || !token) { msg.textContent = '주소와 비밀 코드를 모두 입력하세요.'; return; }
-      API.store.set(url, token); msg.textContent = '연결 중...'; $('#gate-go').disabled = true;
-      try { await loadBoot(); route(); } catch (e) { msg.textContent = '실패: ' + e.message; $('#gate-go').disabled = false; }
+    const urlWrap = $('#gate-url-wrap'), urlInp = $('#gate-url'), msg = $('#gate-msg'), go = $('#gate-go');
+    urlInp.value = API.store.url;
+    urlWrap.hidden = !!(window.ERV_CONFIG && window.ERV_CONFIG.apiUrl) && !!API.store.url;
+    if (S.loginError) { msg.textContent = '로그인하지 못했습니다: ' + S.loginError; S.loginError = ''; }
+    go.onclick = async () => {
+      const url = urlInp.value.trim();
+      if (!url) { msg.textContent = '서버 주소를 입력하세요.'; urlWrap.hidden = false; return; }
+      go.disabled = true; msg.textContent = '서버 확인 중...';
+      try {
+        const p = await API.ping(url);
+        if (!p || !p.ok || p.backend !== 'worker') throw new Error('ER Vision 서버 주소가 아닙니다.');
+        if (!p.loginReady) throw new Error('서버에 디스코드 로그인 설정이 아직 없습니다.');
+        API.store.url = url;
+        location.href = API.loginUrl();
+      } catch (e) { msg.textContent = '실패: ' + e.message; go.disabled = false; }
     };
   }
   async function loadBoot() {
     const b = await API.get('bootstrap');
     S.boot = b; S.games = Analysis.enrich(b.games || [], b.meta, b.seasons);
-    $('#owner-chip').textContent = b.owner.nickname + ' · 마지막 수집 ' + (b.owner.lastFetch || '-');
+    $('#owner-chip').textContent = (b.owner.nickname || b.me.name || '닉네임 미설정') + (b.owner.nickname ? ' · 마지막 수집 ' + (b.owner.lastFetch || '-') : '');
     renderModePick(S.games);
     renderSeasonPick(S.games);
-    API.get('seasonStats').then(st => { S.seasonStats = st; if (location.hash.includes('dashboard') || !location.hash) route(); }).catch(() => {});
+    if (b.owner.nickname) API.get('seasonStats').then(st => { S.seasonStats = st; if (location.hash.includes('dashboard') || !location.hash) route(); }).catch(() => {});
+  }
+  // 로그인 만료 등으로 세션이 사라지면 첫 화면으로 돌아간다
+  function handleErr(e, prefix) {
+    if (e && e.needLogin) { S.boot = null; route(); toast('다시 로그인하세요.', true); return; }
+    toast((prefix || '실패: ') + e.message, true);
+  }
+
+  // ---------- 공유된 복기노트 (로그인 없이) ----------
+  async function renderShared(v, id) {
+    v.appendChild(el('h1', {}, '공유된 복기노트'));
+    const box = el('div', { class: 'card', style: 'max-width:820px' }, '불러오는 중...');
+    v.appendChild(box);
+    try {
+      if (!API.store.url) throw new Error('서버 주소를 모릅니다. 링크를 다시 받아 주세요.');
+      const d = await API.shared(id);
+      box.innerHTML = '';
+      const n = d.note || {};
+      const g = d.game ? Analysis.enrich([d.game], d.meta, [])[0] : null;
+      if (g) {
+        box.appendChild(el('h2', { html: `${esc(g.startDtm)} · ${esc(g.charName)} ${rankBadge(g.gameRank)}` }));
+        box.appendChild(el('div', { class: 'info-grid', style: 'margin-bottom:12px', html: [
+          ['K/A/D', `${g.kills}/${g.assists}/${g.deaths}`], ['단계별 데스', `${g.d1} · ${g.d2} · ${g.d3}`], ['생존', fmtN(g.surviveMin, 1) + '분 / ' + fmtN(g.durationMin, 1) + '분'],
+          ['시작 지역', g.startAreaName], ['사망 지역', g.deathAreaName || '-'], ['사망 원인', g.causeOfDeath || '-'], ['팀원', [g.mate1, g.mate2, g.mate3].filter(Boolean).join(', ') || '-'], ['경기ID', String(g.gameId)]
+        ].map(([k, val]) => `<div><div class="k">${k}</div><div>${esc(val)}</div></div>`).join('') }));
+      }
+      [['결정적 순간', n.moment], ['상황 설명', n.situation], ['실수 태그', [n.tag1, n.tag2, n.tag3].filter(Boolean).join(', ')], ['잘한 점', n.good], ['다음 판 실천 과제', n.nextAction], ['핵심 교훈', n.lesson], ['자유 서술', n.free]]
+        .filter(([, val]) => val).forEach(([k, val]) => box.appendChild(el('div', { class: 'field' }, [el('div', { class: 'k small muted' }, k), el('div', { style: 'white-space:pre-wrap' }, String(val))])));
+      box.appendChild(el('p', { class: 'small muted', style: 'margin-top:12px' }, '이 노트는 작성자가 링크로 공유한 것입니다. 작성자의 닉네임과 다른 기록은 보이지 않습니다.'));
+    } catch (e) { box.textContent = '열 수 없습니다: ' + e.message; }
   }
 
   // ---------- 대시보드 ----------
@@ -115,6 +155,7 @@
     const G = filtered(S.games);
     const sum = Analysis.summary(G), rv = Analysis.recentVsPrev(G);
     v.appendChild(el('div', { class: 'section-head' }, [el('h1', {}, '대시보드'), el('span', { class: 'muted small' }, (S.mode === 'all' ? '전체 모드' : Analysis.MODE_NAME[S.mode]) + ' · ' + (S.season === 'all' ? '저장된 전체 기간' : seasonName(S.season)))]));
+    if (!S.boot.owner.nickname) { v.appendChild(el('div', { class: 'card empty', html: '아직 내 닉네임이 없습니다. <a href="#/settings">설정</a>에서 게임 닉네임을 저장하면 경기 기록을 모으기 시작합니다. 닉네임 조회와 다른 기능은 지금 바로 쓸 수 있습니다.' })); return; }
     if (!G.length) { v.appendChild(el('div', { class: 'card empty' }, '이 모드·시즌에 저장된 경기가 없습니다. 설정에서 [지금 갱신]을 누르거나 다른 모드·시즌을 선택하세요.')); if (hasRp()) renderSeasonCards(v); return; }
     if (isCobalt()) {
       v.appendChild(el('div', { class: 'grid kpi' }, [
@@ -352,7 +393,30 @@
       rowB.appendChild(save);
       if (noteMap.has(String(g.gameId))) { const del = el('button', { class: 'btn danger' }, '삭제'); del.onclick = async () => { if (!confirm('이 경기의 복기노트를 삭제할까요?')) return; try { await API.post('deleteNote', { gameId: g.gameId }); S.boot.notes = notes.filter(x => String(x.gameId) !== String(g.gameId)); noteMap.delete(String(g.gameId)); toast('삭제했습니다.'); route(); } catch (e) { toast('삭제 실패: ' + e.message, true); } }; rowB.appendChild(del); }
       right.appendChild(rowB);
+      if (noteMap.has(String(g.gameId))) right.appendChild(shareBox(g.gameId));
       right.appendChild(checklist());
+    }
+    function shareBox(gameId) {
+      const box = el('div', { class: 'card', style: 'margin-top:12px' });
+      const draw = () => {
+        box.innerHTML = '';
+        const sh = (S.boot.shares || []).find(x => String(x.gameId) === String(gameId));
+        if (!sh) {
+          const b = el('button', { class: 'btn' }, '공유 링크 만들기');
+          b.onclick = async () => { b.disabled = true; try { const r = await API.post('shareNote', { gameId }); S.boot.shares = (S.boot.shares || []).concat([r]); draw(); } catch (e) { handleErr(e); b.disabled = false; } };
+          box.append(el('div', { class: 'small muted', style: 'margin-bottom:8px' }, '이 노트는 나만 봅니다. 링크를 만들면 링크를 아는 사람은 이 판 노트 하나만 볼 수 있습니다(닉네임은 보이지 않음).'), b);
+          return;
+        }
+        const link = location.origin + location.pathname + '#/shared/' + sh.id + '?api=' + encodeURIComponent(API.store.url);
+        const inp = el('input', { type: 'text', readonly: 'readonly', value: link, style: 'flex:1;min-width:260px' });
+        const copy = el('button', { class: 'btn' }, '복사');
+        copy.onclick = async () => { try { await navigator.clipboard.writeText(link); toast('링크를 복사했습니다.'); } catch (e) { inp.select(); toast('복사하지 못했습니다. 직접 선택해서 복사하세요.', true); } };
+        const off = el('button', { class: 'btn danger' }, '공유 끄기');
+        off.onclick = async () => { off.disabled = true; try { await API.post('unshareNote', { gameId }); S.boot.shares = (S.boot.shares || []).filter(x => String(x.gameId) !== String(gameId)); toast('공유를 껐습니다. 예전 링크는 더 이상 열리지 않습니다.'); draw(); } catch (e) { handleErr(e); off.disabled = false; } };
+        box.append(el('div', { class: 'small muted', style: 'margin-bottom:8px' }, '공유 중: 링크를 아는 사람은 이 판 노트를 볼 수 있습니다.'), el('div', { class: 'row' }, [inp, copy, off]));
+      };
+      draw();
+      return box;
     }
     function checklist() {
       return el('details', { class: 'help', style: 'margin-top:14px' }, [el('summary', {}, '후반 포지셔닝 체크 질문 7개 (아니오가 나온 순간이 결정적 순간일 확률이 높다)'), el('ol', { class: 'checklist', html: ['금지구역 공개 직후 10초 안에 이동 방향을 정했나?', '이동 경로가 다른 팀의 예상 경로와 겹치지 않았나?', '안전지대 안에서 벽이나 구조물을 등지고 있었나?', '팀원 셋이 서로 스킬 사거리 안에 있었나?', '교전 시작 전에 남은 팀 수와 그 위치를 알고 있었나?', '궁·핵심 스킬 쿨이 돌아온 상태에서 교전을 시작했나?', '싸울지 기다릴지를 판단해서 정했나, 아니면 끌려 들어갔나?'].map(q => `<li>${q}</li>`).join('') })]);
@@ -435,14 +499,15 @@
   // ---------- 설정 ----------
   views.settings = v => {
     v.appendChild(el('h1', {}, '설정'));
-    const o = S.boot.owner;
-    const card = el('div', { class: 'card', style: 'max-width:720px' });
+    const o = S.boot.owner, me = S.boot.me || {};
+    const card = el('div', { class: 'card', style: 'max-width:720px' }, [el('h3', {}, '내 계정')]);
     const backend = el('div', {}, '확인 중...');
-    card.appendChild(el('div', { class: 'info-grid', html: `<div><div class="k">계정</div><div>${esc(o.nickname || '(미설정)')}</div></div><div><div class="k">마지막 수집</div><div>${esc(o.lastFetch || '-')}</div></div><div><div class="k">저장된 경기</div><div>${S.games.length}판</div></div><div><div class="k">사이트 버전</div><div>${VERSION}</div></div>` }));
-    card.appendChild(el('div', { class: 'info-grid', style: 'margin-top:8px' }, [el('div', {}, [el('div', { class: 'k' }, '데이터 창구'), backend]), el('div', {}, [el('div', { class: 'k' }, '주소'), el('div', { class: 'small' }, API.store.url)])]));
-    API.ping(API.store.url).then(p => { backend.textContent = (p.backend === 'worker' ? 'Cloudflare Worker' : 'Google Apps Script') + (p.version ? ' · ' + p.version : ''); }).catch(() => { backend.textContent = '응답 없음'; });
+    card.appendChild(el('div', { class: 'info-grid', html: `<div><div class="k">디스코드</div><div>${esc(me.name || '-')}${me.admin ? ' (관리자)' : ''}</div></div><div><div class="k">게임 닉네임</div><div>${esc(o.nickname || '(미설정)')}</div></div><div><div class="k">마지막 수집</div><div>${esc(o.lastFetch || '-')}</div></div><div><div class="k">저장된 경기</div><div>${S.games.length}판</div></div>` }));
+    card.appendChild(el('div', { class: 'info-grid', style: 'margin-top:8px' }, [el('div', {}, [el('div', { class: 'k' }, '서버'), backend]), el('div', {}, [el('div', { class: 'k' }, '사이트 버전'), el('div', {}, VERSION)])]));
+    API.ping().then(p => { backend.textContent = 'Cloudflare Worker' + (p.version ? ' · ' + p.version : ''); }).catch(() => { backend.textContent = '응답 없음'; });
     const r = el('div', { class: 'row', style: 'margin-top:14px' });
     const refresh = el('button', { class: 'btn primary' }, '지금 갱신 (새 경기 가져오기)');
+    if (!o.nickname) refresh.disabled = true;
     refresh.onclick = async () => {
       refresh.disabled = true;
       let added = 0;
@@ -457,54 +522,47 @@
         }
         toast(`${added}판 추가`);
         await loadBoot(); route(); return;
-      } catch (e) { toast('실패: ' + e.message, true); }
+      } catch (e) { handleErr(e); }
       refresh.disabled = false; refresh.textContent = '지금 갱신 (새 경기 가져오기)';
     };
-    const reload = el('button', { class: 'btn' }, '다시 불러오기'); reload.onclick = async () => { try { await loadBoot(); toast('불러왔습니다.'); route(); } catch (e) { toast(e.message, true); } };
-    const logout = el('button', { class: 'btn danger' }, '연결 해제 (비밀 코드 지우기)'); logout.onclick = () => { API.store.clear(); S.boot = null; location.hash = '#/dashboard'; route(); };
+    const reload = el('button', { class: 'btn' }, '다시 불러오기'); reload.onclick = async () => { try { await loadBoot(); toast('불러왔습니다.'); route(); } catch (e) { handleErr(e); } };
+    const logout = el('button', { class: 'btn' }, '로그아웃');
+    logout.onclick = async () => { try { await API.post('logout'); } catch (e) { /* 이미 만료됐어도 지운다 */ } API.store.session = ''; S.boot = null; location.hash = '#/dashboard'; route(); };
     r.append(refresh, reload, logout); card.appendChild(r);
     v.appendChild(card);
 
-    // 내 닉네임 (Worker에서 처음 시작할 때)
-    const ownerCard = el('div', { class: 'card section', style: 'max-width:720px' }, [el('h3', {}, '내 닉네임')]);
+    // 게임 닉네임: 저장하면 이 닉네임의 경기를 내 계정으로 모은다
+    const ownerCard = el('div', { class: 'card section', style: 'max-width:720px' }, [el('h3', {}, '내 게임 닉네임'),
+      el('p', { class: 'small muted' }, '저장하면 이 닉네임의 랭크·일반·코발트 경기를 6시간마다 자동으로 모읍니다. 복기노트와 코칭 리포트는 내 계정에만 저장되고 다른 사람에게 보이지 않습니다. 60일 동안 들어오지 않으면 자동 수집을 멈춥니다.')]);
     const nickInp = el('input', { type: 'text', style: 'max-width:240px' }); nickInp.value = o.nickname || '';
     const nickBtn = el('button', { class: 'btn' }, '저장');
-    nickBtn.onclick = async () => { try { await API.get('setOwner', { nickname: nickInp.value.trim() }); toast('저장했습니다. [지금 갱신]으로 경기를 가져오세요.'); await loadBoot(); route(); } catch (e) { toast('실패: ' + e.message, true); } };
-    ownerCard.appendChild(el('div', { class: 'row' }, [nickInp, nickBtn, el('span', { class: 'small muted' }, 'Cloudflare Worker 창구에서만 바꿀 수 있습니다. 데이터를 옮기면 자동으로 채워집니다.')]));
+    nickBtn.onclick = async () => {
+      const nn = nickInp.value.trim();
+      if (!nn) return;
+      if (o.nickname && nn !== o.nickname && !confirm('닉네임을 바꾸면 앞으로 새 닉네임의 경기를 모읍니다. 이미 모은 경기와 노트는 남습니다. 바꿀까요?')) return;
+      nickBtn.disabled = true;
+      try { await API.get('setOwner', { nickname: nn }); toast('저장했습니다. [지금 갱신]으로 경기를 가져오세요.'); await loadBoot(); route(); } catch (e) { handleErr(e); nickBtn.disabled = false; }
+    };
+    ownerCard.appendChild(el('div', { class: 'row' }, [nickInp, nickBtn]));
     v.appendChild(ownerCard);
 
-    // 데이터 옮기기
-    const mig = el('div', { class: 'card section', style: 'max-width:720px' }, [el('h3', {}, '데이터 창구 옮기기 (구글 시트 → Cloudflare)'),
-      el('p', { class: 'small muted' }, '새 Worker 주소와 비밀 코드를 넣고 옮기면, 경기·복기노트·코칭 리포트·팀원·캐릭터 정보가 새 창구로 복사됩니다. 지금 창구의 데이터는 지워지지 않습니다.')]);
-    const newUrl = el('input', { type: 'url', placeholder: 'https://er-vision.<이름>.workers.dev' });
-    const newTok = el('input', { type: 'password', placeholder: '새 창구의 비밀 코드 (GitHub에 넣은 SITE_TOKEN)' }); newTok.value = API.store.token;
-    const logBox = el('div', { class: 'small muted', style: 'margin-top:8px;white-space:pre-wrap' });
-    const fromNow = el('button', { class: 'btn primary' }, '지금 연결에서 옮기기');
-    const fileInp = el('input', { type: 'file', accept: 'application/json,.json', style: 'display:none' });
-    const fromFile = el('button', { class: 'btn' }, '백업 파일에서 옮기기');
-    mig.append(el('label', {}, ['새 Worker 주소', newUrl]), el('label', { style: 'margin-top:8px' }, ['새 비밀 코드', newTok]), el('div', { class: 'row', style: 'margin-top:10px' }, [fromNow, fromFile, fileInp]), logBox);
-    const run = async getData => {
-      const url = newUrl.value.trim(), tok = newTok.value.trim();
-      if (!url || !tok) { toast('새 주소와 비밀 코드를 입력하세요.', true); return; }
-      fromNow.disabled = fromFile.disabled = true;
-      const log = m => { logBox.textContent += m + '\n'; };
-      logBox.textContent = '';
-      try {
-        const res = await migrateTo(url, tok, await getData(), log);
-        log(`완료: 경기 ${res.games}판, 복기노트 ${res.notes}건, 리포트 ${res.reports}건, 팀원 ${res.teammates}판`);
-        API.store.set(url, tok);
-        toast('새 창구로 옮겼습니다. 이제 이 브라우저는 새 창구를 씁니다.');
-        await loadBoot(); route();
-      } catch (e) { log('실패: ' + e.message); toast('옮기기 실패: ' + e.message, true); }
-      fromNow.disabled = fromFile.disabled = false;
-    };
-    fromNow.onclick = () => run(async () => S.boot);
-    fromFile.onclick = () => fileInp.click();
-    fileInp.onchange = () => { const f = fileInp.files[0]; if (f) run(async () => JSON.parse(await f.text())); fileInp.value = ''; };
-    v.appendChild(mig);
+    // v0.2까지 쌓은 데이터 (한 번만, 예전 비밀 코드가 있어야 한다)
+    if (me.legacyAvailable) {
+      const leg = el('div', { class: 'card section', style: 'max-width:720px' }, [el('h3', {}, '기존 데이터 가져오기'),
+        el('p', { class: 'small muted' }, '로그인 기능이 생기기 전(v0.2)에 이 서버에 쌓은 경기·복기노트·코칭 리포트·팀원 기록을 내 계정으로 복사합니다. 예전에 쓰던 비밀 코드(SITE_TOKEN)가 필요하고, 한 계정만 한 번 가져갈 수 있습니다. 가져간 계정은 관리자가 됩니다.')]);
+      const tok = el('input', { type: 'password', placeholder: '예전 비밀 코드', style: 'max-width:260px' }); tok.value = API.store.oldToken;
+      const go = el('button', { class: 'btn primary' }, '내 계정으로 가져오기');
+      go.onclick = async () => {
+        go.disabled = true;
+        try { const res = await API.post('claimLegacy', { legacyToken: tok.value.trim() }); API.store.oldToken = ''; toast(`가져왔습니다: 경기 ${res.games}판, 복기노트 ${res.notes}건`); await loadBoot(); route(); }
+        catch (e) { handleErr(e); go.disabled = false; }
+      };
+      leg.appendChild(el('div', { class: 'row' }, [tok, go]));
+      v.appendChild(leg);
+    }
 
-    // 백업
-    const bak = el('div', { class: 'card section', style: 'max-width:720px' }, [el('h3', {}, '백업'), el('p', { class: 'small muted' }, '지금 보이는 데이터 전체를 파일 하나로 내려받습니다. 위의 [백업 파일에서 옮기기]로 되살릴 수 있습니다.')]);
+    // 백업과 복원
+    const bak = el('div', { class: 'card section', style: 'max-width:720px' }, [el('h3', {}, '백업'), el('p', { class: 'small muted' }, '내 계정의 데이터 전체를 파일 하나로 내려받습니다. [백업 파일 불러오기]로 내 계정에 되살릴 수 있습니다(같은 경기의 노트는 파일 내용으로 덮어씁니다).')]);
     const dl = el('button', { class: 'btn' }, '백업 내려받기');
     dl.onclick = () => {
       const b = S.boot;
@@ -513,27 +571,51 @@
       const a = el('a', { href: URL.createObjectURL(blob), download: `er-vision-backup-${new Date().toISOString().slice(0, 10)}.json` });
       document.body.appendChild(a); a.click(); a.remove();
     };
-    bak.appendChild(dl);
+    const fileInp = el('input', { type: 'file', accept: 'application/json,.json', style: 'display:none' });
+    const fromFile = el('button', { class: 'btn' }, '백업 파일 불러오기');
+    const logBox = el('div', { class: 'small muted', style: 'margin-top:8px;white-space:pre-wrap' });
+    fromFile.onclick = () => fileInp.click();
+    fileInp.onchange = async () => {
+      const f = fileInp.files[0]; fileInp.value = '';
+      if (!f) return;
+      fromFile.disabled = true; logBox.textContent = '';
+      const log = m => { logBox.textContent += m + '\n'; };
+      try {
+        const res = await restoreBackup(JSON.parse(await f.text()), log);
+        log(`완료: 경기 ${res.games}판, 복기노트 ${res.notes}건, 리포트 ${res.reports}건, 팀원 ${res.teammates}판`);
+        await loadBoot(); route();
+      } catch (e) { log('실패: ' + e.message); handleErr(e); }
+      fromFile.disabled = false;
+    };
+    bak.append(el('div', { class: 'row' }, [dl, fromFile, fileInp]), logBox);
     v.appendChild(bak);
+
+    // 개인정보와 계정 삭제
+    const pv = el('div', { class: 'card section', style: 'max-width:720px' }, [el('h3', {}, '개인정보'),
+      el('ul', { class: 'small', html: '<li>디스코드에서는 고유번호와 표시 이름만 받습니다. 이메일·친구 목록·서버 목록은 받지 않습니다.</li><li>저장하는 것: 디스코드 고유번호·이름, 게임 닉네임, 내 경기 기록, 복기노트, 코칭 리포트, 팀원 기록.</li><li>복기노트와 리포트는 나만 봅니다. 내가 만든 공유 링크를 아는 사람만 그 판 노트 하나를 볼 수 있습니다.</li><li>경기 기록 자체는 게임사 공개 API에서 누구나 조회할 수 있는 정보입니다.</li><li>계정을 삭제하면 위 데이터가 모두 지워지며 되돌릴 수 없습니다.</li>' })]);
+    const del = el('button', { class: 'btn danger' }, '계정 삭제');
+    del.onclick = async () => {
+      if (!confirm('내 계정과 경기 기록·복기노트·리포트를 모두 지웁니다. 되돌릴 수 없습니다. 먼저 백업을 내려받는 것을 권합니다. 지울까요?')) return;
+      if (prompt('확인을 위해 "삭제"라고 입력하세요.') !== '삭제') return;
+      try { await API.post('deleteAccount'); API.store.session = ''; S.boot = null; toast('계정을 삭제했습니다.'); location.hash = '#/dashboard'; route(); } catch (e) { handleErr(e); }
+    };
+    pv.appendChild(del);
+    v.appendChild(pv);
   };
 
-  async function migrateTo(url, token, data, log) {
-    const p = await API.ping(url);
-    if (!p || !p.ok || p.backend !== 'worker') throw new Error('새 주소가 Cloudflare Worker 데이터 창구가 아닙니다.');
-    if (!data || !Array.isArray(data.games)) throw new Error('옮길 데이터 형식이 아닙니다.');
-    const send = (kind, items, extra = {}) => API.call(url, token, 'import', { kind, items, ...extra });
+  // 백업 파일을 내 계정으로 되살린다
+  async function restoreBackup(data, log) {
+    if (!data || !Array.isArray(data.games)) throw new Error('백업 파일 형식이 아닙니다.');
+    const send = (kind, items, extra = {}) => API.post('import', { kind, items, ...extra });
     const tm = data.teammates || [];
-    const needDetail = tm.length === 0;   // 팀원 기록이 없으면 새 창구가 상세를 다시 받아 채운다
-    await send('owner', [data.owner || {}]); log('계정 정보');
-    if (data.meta) { await send('meta', [data.meta]); log('캐릭터·지역·태그'); }
+    const needDetail = tm.length === 0;   // 팀원 기록이 없으면 서버가 상세를 다시 받아 채운다
+    if (data.owner && data.owner.nickname && !S.boot.owner.nickname) { await send('owner', [data.owner]); log('닉네임'); }
     const n = data.games.length;
     for (let i = 0; i < n; i += 100) { await send('games', data.games.slice(i, i + 100), { needDetail }); log(`경기 ${Math.min(i + 100, n)}/${n}`); }
     await send('notes', data.notes || []); log(`복기노트 ${(data.notes || []).length}건`);
-    await send('reports', data.reports || []); log(`코칭 리포트 ${(data.reports || []).length}건`);
+    if ((data.reports || []).length) { await send('reports', data.reports); log(`코칭 리포트 ${data.reports.length}건`); }
     for (let i = 0; i < tm.length; i += 200) await send('teammates', tm.slice(i, i + 200));
-    log(tm.length ? `팀원 기록 ${tm.length}판` : '팀원 기록 없음: 새 창구가 경기 상세를 다시 받아 채웁니다 (사이트를 열어 두면 약 7분, 닫으면 1시간 안팎)');
-    const check = await API.call(url, token, 'bootstrap');
-    if (check.games.length < n) throw new Error(`확인 실패: 새 창구 경기 ${check.games.length}판 / 보낸 ${n}판`);
+    const check = await API.get('bootstrap');
     return { games: check.games.length, notes: check.notes.length, reports: check.reports.length, teammates: (check.teammates || []).length };
   }
 
@@ -549,8 +631,24 @@
   window.ERV = { VERSION, registerView, S, Analysis, route, helpers: { $, el, esc, fmtP, fmtN, fmtS, SERIES, tile, chart, rankBadge, phaseHtml, gamesTable, statTable, toast, filtered, seasonName, deltaHtml, isCobalt, hasRp } };
 
   // ---------- 시작 (기능 파일들이 먼저 등록되도록 다음 틱에) ----------
+  // 주소 끝의 #login=… (로그인 직후), #login_error=…, ?api=… (서버 주소 알려 주기)를 읽고 주소창에서 지운다.
+  function readHashParams() {
+    const h = location.hash;
+    const m = h.match(/^#(login|login_error)=([^&]*)/);
+    if (m) {
+      if (m[1] === 'login') API.store.session = decodeURIComponent(m[2]); else S.loginError = decodeURIComponent(m[2]);
+      history.replaceState(null, '', location.pathname + location.search + '#/dashboard');
+    }
+    const a = location.hash.match(/[?&#]api=([^&]+)/);
+    if (a) {
+      API.store.url = decodeURIComponent(a[1]);
+      history.replaceState(null, '', location.pathname + location.search + location.hash.replace(/[?&#]api=[^&]+/, '').replace(/^$/, '#/dashboard'));
+    }
+  }
   setTimeout(async () => {
-    if (API.store.url && API.store.token) { try { await loadBoot(); } catch (e) { toast('연결 실패: ' + e.message, true); } }
+    readHashParams();
+    const name = (location.hash.replace(/^#\/?/, '') || '').split(/[/?]/)[0];
+    if (API.store.url && API.store.session && name !== 'shared') { try { await loadBoot(); } catch (e) { if (!e.needLogin) toast('연결 실패: ' + e.message, true); } }
     route();
   }, 0);
 })();
