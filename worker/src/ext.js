@@ -2,5 +2,6 @@
 //  ext.actions[name] = async (ctx, p) => 결과          웹 요청 action 추가
 //  ext.onOwnerGameDetail.push((ctx, n, players) => D1문 | null)   사용자 경기 상세를 받을 때 (ctx.user = 그 사용자, 같은 일괄 저장에 포함)
 //  ext.bootstrap.push(async (ctx) => ({ 필드명: 'JSON 문자열' }))  bootstrap 응답에 필드 추가
-//  ext.importers[kind] = (ctx, items) => [D1문...]       데이터 옮기기 종류 추가
-export const ext = { actions: {}, onOwnerGameDetail: [], bootstrap: [], importers: {} };
+//  ext.importers[kind] = (ctx, items) => [D1문...]       백업 불러오기 종류 추가 (ctx.user = 그 사용자)
+//  ext.publicActions[name] = async (ctx, p) => Response    로그인 없이 부르는 action
+export const ext = { actions: {}, publicActions: {}, onOwnerGameDetail: [], bootstrap: [], importers: {} };
