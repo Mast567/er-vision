@@ -57,7 +57,8 @@ export async function importData(ctx, u, kind, items, opts = {}) {
     stmts = [db.prepare("UPDATE users SET nickname = ?, uid = ?, last_fetch_ms = ?, list_next = '' WHERE id = ?").bind(o.nickname || '', o.uid || '', Number.isFinite(ms) ? ms : 0, u.id)];
   } else if (kind === 'games') {
     // needDetail: 팀원 기록 없이 옮겨 온 경기는 상세를 다시 받아 팀원을 채운다
-    stmts = items.map(g => {
+    // 경기 번호가 양의 정수가 아닌 줄은 건너뛴다
+    stmts = items.filter(g => g && typeof g === 'object' && Number.isSafeInteger(Number(g.gameId)) && Number(g.gameId) > 0).map(g => {
       const n = Object.assign({}, g, { gameId: Number(g.gameId), mode: g.mode == null ? RANKED_MODE : Number(g.mode) });
       return db.prepare('INSERT OR REPLACE INTO u_games (user_id, game_id, start_dtm, season_id, mode, json, detail_done) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(u.id, n.gameId, String(n.startDtm), Number(n.seasonId) || 0, n.mode, JSON.stringify(n), opts.needDetail ? 0 : 1);
     });

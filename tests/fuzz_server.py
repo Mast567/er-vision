@@ -4,7 +4,7 @@
 필요: tools/mock_discord.py 가 127.0.0.1:8791 에서 실행 중일 것.
 사용: python3 tests/fuzz_server.py <시드> [<시드> ...]   (환경 변수 HARSH=3 이면 오류를 3배 자주 낸다, BURST=1 이면 일부 경기 상세를 처음 3번 429로 막는다)
 """
-import json, os, re, shutil, signal, subprocess, sys, tempfile, time, urllib.parse, urllib.request
+import json, os, re, shutil, signal, subprocess, sys, tempfile, threading, time, urllib.parse, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKER = os.path.join(ROOT, 'worker')
@@ -224,6 +224,59 @@ class Run:
             self.verify_games(b['games'], mine(nick_c, self.mock('/__truth')), '6단계 cron')
             a = self.api(alice, 'bootstrap')['data']
             self.check(not set(g['gameId'] for g in a['games']) & set(g['gameId'] for g in b['games']), '계정 간 경기 섞임')
+
+            # 7단계: 예전 코드가 남긴 이어 받기 위치(list_next)에서 다시 채우기가 시작돼도 앞쪽 경기까지 새 형식이 돼야 한다
+            self.sql("UPDATE u_games SET json = json_remove(json, '$.v', '$.weapon')")
+            self.sql("UPDATE users SET data_v = 1, list_next = '20' WHERE id = (SELECT id FROM users ORDER BY id LIMIT 1)")
+            self.refresh_all(alice)
+            self.verify_games(self.api(alice, 'bootstrap')['data']['games'], mine(nick_a, self.mock('/__truth')), '7단계 중간에서 시작한 다시 채우기')
+
+            # 8단계: 옛 형식 정밀 분석을 다시 모을 때 진행률(done ≤ total, 끝나면 done = total)
+            self.sql("UPDATE cache_users SET data_v = 1")
+            self.sql("UPDATE cache_games SET json = json_remove(json, '$.v', '$.weapon')")
+            r = self.api(alice, 'deep', nickname=nick_b)
+            self.check(r['ok'] and r['data'].get('status') in ('queued', 'running'), f'8단계: 다시 모으기가 시작되지 않음: {r}')
+            last = None
+            for i in range(400):
+                s8 = self.api(alice, 'jobStatus', nickname=nick_b)
+                if not s8['ok']:
+                    continue
+                d8 = s8['data']
+                if d8['status'] in ('done', 'error', 'none'):
+                    break
+                if d8.get('phase') == 'detail':
+                    self.check(d8['done'] <= d8['total'], f"8단계: 진행률 초과 {d8['done']}/{d8['total']}")
+                    last = d8
+            self.check(s8['ok'] and s8['data']['status'] == 'done', f'8단계: 끝나지 않음 {s8}')
+            d = self.api(alice, 'deep', nickname=nick_b)
+            if d['ok'] and d['data'].get('status') == 'done':
+                self.verify_games(d['data']['games'], ranked(nick_b, self.mock('/__truth')), '8단계 다시 모은 정밀 분석')
+
+            # 9단계: 같은 사용자 갱신 + cron + 진행률 요청이 동시에 들어와도 중복·누락이 없어야 한다
+            self.mock(f'/__add?nick={urllib.parse.quote(nick_a)}&n=23')
+            self.mock('/__rotate')
+            calls = [lambda: self.api(alice, 'refresh')] * 4 + [lambda: http(self.W + '__scheduled?cron=*+*+*+*+*')] * 3 + [lambda: self.api(bob, 'lookup', nickname=nick_a)] * 2
+            th = [threading.Thread(target=f) for f in calls]
+            [t.start() for t in th]
+            [t.join() for t in th]
+            self.refresh_all(alice)
+            self.verify_games(self.api(alice, 'bootstrap')['data']['games'], mine(nick_a, self.mock('/__truth')), '9단계 동시 요청')
+
+            # 10단계: 잘못된 입력
+            r = self.api(alice, 'seasonStats', limit=500)
+            c0 = self.mock('/__calls')['calls']
+            self.api(alice, 'seasonStats', limit=999)
+            self.check(self.mock('/__calls')['calls'] - c0 <= 12, '10단계: seasonStats limit 제한 없음')
+            imp = urllib.request.Request(self.W, data=json.dumps({'action': 'import', 'kind': 'games', 'items': [{'gameId': 'abc'}, {}, None, {'gameId': 5, 'startDtm': '2026-11-01 10:00:00'}]}).encode(),
+                                         headers={'Authorization': 'Bearer ' + bob, 'Content-Type': 'application/json'})
+            body = json.loads(urllib.request.urlopen(imp, timeout=60).read())
+            bad_rows = self.sql("SELECT COUNT(*) AS n FROM u_games WHERE game_id IS NULL OR typeof(game_id) <> 'integer'")[0]['n']
+            self.check(bad_rows == 0, f'10단계: 잘못된 gameId가 저장됨 {bad_rows}건 ({body})')
+            self.check(self.sql('SELECT COUNT(*) AS n FROM u_games WHERE game_id = 5')[0]['n'] == 1, f'10단계: 잘못된 줄 때문에 정상 줄도 불러오지 못함 ({body})')
+            self.sql("INSERT INTO kv (key, value, expires) VALUES ('old:x', '1', 1)")
+            http(self.W + '__scheduled?cron=*+*+*+*+*')
+            self.check(not self.sql("SELECT key FROM kv WHERE key = 'old:x'"), '10단계: 만료된 kv가 지워지지 않음')
+
             counts = {n: len(mine(n, self.mock('/__truth'))) for n in (nick_a, nick_b, nick_c)}
             return {'seed': self.seed, 'games': counts, 'refresh': [n1, n2, n3], 'errors': [e1, e2, e3], 'apiCalls': self.mock('/__calls')['calls']}
         finally:

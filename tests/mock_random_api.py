@@ -125,7 +125,13 @@ class H(http.server.BaseHTTPRequestHandler):
                             return self.send({'code': 200, 'message': 'Success', 'userGames': g['_players']})
                 return self.send({'code': 404, 'message': 'Not Found'})
             if p == '/v2/data/Season':
-                return self.send({'code': 200, 'message': 'Success', 'data': [{'seasonID': 41, 'seasonName': 'S41', 'seasonStart': '2026-10-01 00:00:00', 'seasonEnd': '2026-12-31 00:00:00', 'isCurrent': 1}]})
+                # 시즌 41(현재)부터 한 달씩 거슬러 올라가는 30개 시즌
+                seasons = []
+                for i, sid in enumerate(range(41, 11, -1)):
+                    y, m = divmod(2026 * 12 + 9 - i, 12)
+                    seasons.append({'seasonID': sid, 'seasonName': f'S{sid}', 'seasonStart': f'{y}-{m + 1:02d}-01 00:00:00',
+                                    'seasonEnd': '2026-12-31 00:00:00' if sid == 41 else f'{y + (m + 1) // 12}-{(m + 1) % 12 + 1:02d}-01 00:00:00', 'isCurrent': 1 if sid == 41 else 0})
+                return self.send({'code': 200, 'message': 'Success', 'data': seasons})
             if p == '/v2/data/Character':
                 return self.send({'code': 200, 'message': 'Success', 'data': [{'code': i, 'name': f'C{i}', 'weaponRangeType': 'Melee'} for i in range(1, 31)]})
             if p == '/v2/data/Area':

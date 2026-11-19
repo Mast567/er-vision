@@ -36,7 +36,7 @@
     const recent = games.slice(half), prev = games.slice(0, half);
     const better = (a, b) => isCobalt() ? (Analysis.mean(b.map(g => g.win)) - Analysis.mean(a.map(g => g.win))) : (Analysis.mean(a.map(g => g.gameRank)) - Analysis.mean(b.map(g => g.gameRank)));
     return Object.assign(sum, {
-      noEarlyRate: Analysis.pct(games.filter(g => !g.earlyDeath).length, games.length),
+      noEarlyRate: Analysis.pct(games.filter(g => !g.early).length, games.length),
       underdogTop3: under.length >= 3 ? Analysis.pct(under.filter(g => g.top3).length, under.length) : null,
       steadiness: -sd,
       improvement: prev.length >= 3 ? better(prev, recent) : null

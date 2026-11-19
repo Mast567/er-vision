@@ -36,7 +36,6 @@ async function collectList(ctx, uid, { next = null, modes, maxPages, known, save
 // 상세가 빈 경기에 팀원·로비 RP를 채운다. 요청 과다(429)는 다음 실행에서 다시 시도하고, 그 밖의 실패는 빈 채로 완료 처리한다.
 async function fillDetails(ctx, rows, save) {
   await ctx.loadChars();
-  let done = 0;
   for (const row of rows) {
     if (ctx.api.left <= 0) break;
     const n = JSON.parse(row.json);
@@ -44,9 +43,7 @@ async function fillDetails(ctx, rows, save) {
     try { players = await ctx.api.players(n.gameId); } catch (e) { if (e.budget || e.status === 429) break; }
     attachDetail(n, players, ctx.charName);
     await save(n, players);
-    done++;
   }
-  return done;
 }
 
 // 새 경기는 넣고, 이미 있는 경기는 목록에서 오는 칸만 새 모양으로 덮는다(상세에서 얻은 칸은 남는다).
@@ -66,19 +63,24 @@ export async function ownerUid(ctx, u) {
 export const pendingOwner = async (ctx, u) => (await ctx.db.prepare('SELECT COUNT(*) AS n FROM u_games WHERE user_id = ? AND detail_done = 0').bind(u.id).first()).n;
 
 // 경기 형식이 낮은(data_v < DATA_V) 사용자는 이미 가진 경기에서 멈추지 않고 90일치 목록을 끝까지 다시 받아 채운다.
+// 다시 채우기의 이어 받기 위치에는 BACKFILL을 붙인다. 붙어 있지 않은 위치(평소 수집이 남긴 것)에서 시작하면
+// 그보다 최신 경기가 옛 형식으로 남으므로 맨 앞부터 다시 읽는다.
+const BACKFILL = 'b:';
 export async function ownerRefresh(ctx, u) {
   ctx.user = u;
   const db = ctx.db;
   const backfill = (u.data_v || 1) < DATA_V;
   const saveUid = async id => { u.uid = id; await db.prepare('UPDATE users SET uid = ? WHERE id = ?').bind(id, u.id).run(); };
-  const count = async () => (await db.prepare('SELECT COUNT(*) AS n FROM u_games WHERE user_id = ?').bind(u.id).first()).n;
-  const before = await count();
+  const counts = () => db.prepare('SELECT COUNT(*) AS n, COUNT(*) - COALESCE(SUM(detail_done), 0) AS pending FROM u_games WHERE user_id = ?').bind(u.id).first();
+  const before = (await counts()).n;
+  const saved = u.list_next || '';
+  const start = backfill ? (saved.startsWith(BACKFILL) ? saved.slice(BACKFILL.length) : '') : saved;
   const r = await withUid(ctx, u.nickname, await ownerUid(ctx, u), saveUid, id => collectList(ctx, id, {
-    next: u.list_next || null, modes: STORE_MODES, maxPages: ctx.listPages,
+    next: start || null, modes: STORE_MODES, maxPages: ctx.listPages,
     known: backfill ? null : ids => existingIds(ctx, 'SELECT game_id FROM u_games WHERE user_id = ? AND game_id IN (?*)', ids, [u.id]),
     save: rows => upsertUserGames(ctx, u.id, rows)
   }));
-  u.list_next = r.complete ? '' : String(r.next ?? '');
+  u.list_next = r.complete ? '' : (backfill ? BACKFILL : '') + String(r.next ?? '');
   u.last_fetch_ms = Date.now();
   if (backfill && r.complete) u.data_v = DATA_V;
   await db.prepare('UPDATE users SET list_next = ?, last_fetch_ms = ?, data_v = ? WHERE id = ?').bind(u.list_next, u.last_fetch_ms, u.data_v || 1, u.id).run();
@@ -89,7 +91,8 @@ export async function ownerRefresh(ctx, u) {
     for (const h of ext.onOwnerGameDetail) { try { const st = h(ctx, n, players); if (st) stmts.push(st); } catch (e) { console.log('ext', e); } }
     await db.batch(stmts);
   });
-  return { added: (await count()) - before, remaining: await pendingOwner(ctx, u), listing: r.complete ? 'done' : 'more', backfill };
+  const after = await counts();
+  return { added: after.n - before, remaining: after.pending || 0, listing: r.complete ? 'done' : 'more', backfill };
 }
 
 // ---- 정밀 분석: 닉네임별 작업 대기열 (cache_games, jobs)
@@ -131,11 +134,12 @@ async function stepJob(ctx, job) {
     await db.prepare("UPDATE jobs SET status = 'running', phase = ?, next_token = ?, pages = ?, total = (SELECT COUNT(*) FROM cache_games WHERE nickname = ?), updated_at = ? WHERE nickname = ?").bind(phase, r.complete ? '' : String(r.next ?? ''), pages, nick, Date.now(), nick).run();
     return;
   }
-  const save = saveCacheDetail(ctx, nick);
-  const done = await fillDetails(ctx, await pendingCache(ctx, nick), save);
-  await db.prepare("UPDATE jobs SET status = 'running', done = done + ?, updated_at = ? WHERE nickname = ?").bind(done, Date.now(), nick).run();
-  const left = (await db.prepare('SELECT COUNT(*) AS n FROM cache_games WHERE nickname = ? AND detail_done = 0').bind(nick).first()).n;
-  if (left === 0) {
+  await fillDetails(ctx, await pendingCache(ctx, nick), saveCacheDetail(ctx, nick));
+  // 진행률은 표에서 센다. 다시 모으는 닉네임은 상세가 이미 있는 경기도 total에 들어 있다.
+  const c = await db.prepare('SELECT COUNT(*) AS total, COALESCE(SUM(detail_done), 0) AS done FROM cache_games WHERE nickname = ?').bind(nick).first();
+  if (c.done < c.total) {
+    await db.prepare("UPDATE jobs SET status = 'running', total = ?, done = ?, updated_at = ? WHERE nickname = ?").bind(c.total, c.done, Date.now(), nick).run();
+  } else {
     await db.batch([
       db.prepare("INSERT INTO cache_users (nickname, uid, status, last_fetch, game_count, data_v) VALUES (?, (SELECT uid FROM jobs WHERE nickname = ?), 'done', ?, (SELECT COUNT(*) FROM cache_games WHERE nickname = ?), ?) ON CONFLICT(nickname) DO UPDATE SET uid = excluded.uid, status = 'done', last_fetch = excluded.last_fetch, game_count = excluded.game_count, data_v = excluded.data_v").bind(nick, nick, Date.now(), nick, DATA_V),
       db.prepare('DELETE FROM jobs WHERE nickname = ?').bind(nick)
@@ -219,7 +223,7 @@ export async function quickLookup(ctx, nick, guard) {
   // 중간에 막힌 결과는 일부만 있으므로 캐시하지 않고 다시 시도하게 한다
   if (r.stopped) { const e = new Error('게임 API가 바빠서 기록을 다 받지 못했습니다. 잠시 뒤 다시 시도하세요.'); e.status = 429; throw e; }
   games.sort((a, b) => a.startDtm < b.startDtm ? -1 : 1);
-  const cur = (await seasons(ctx)).find(s => s.current);
+  const cur = (await seasons(ctx).catch(() => [])).find(s => s.current);
   let stats = [];
   try { stats = await seasonStats(ctx, uid, 4); } catch { /* 없어도 된다 */ }
   const raw = JSON.stringify({ nickname: nick, uid, mode: 'quick', games, seasonStats: stats, currentSeasonId: cur ? cur.id : null, fetchedAt: new Date().toISOString(), cached: false });

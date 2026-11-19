@@ -66,6 +66,8 @@ const z = v => toNum(v) ?? 0;
 const opt = toNum;
 const isMap = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const parseMap = v => { if (isMap(v)) return v; if (typeof v !== 'string' || !v) return null; try { const o = JSON.parse(v); return isMap(o) ? o : null; } catch { return null; } };
+// 등수는 1 이상 정수. 한 로비는 최대 24명이라 그보다 큰 등수는 잘못된 값이다.
+const rankOf = v => { const n = toNum(v); return Number.isInteger(n) && n >= 1 && n <= 24 ? n : null; };
 const codes = v => (Array.isArray(v) ? v : []).map(toNum).filter(x => x !== null);
 
 // 경기 목록 한 줄에서 사이트가 쓰는 칸만 뽑는다. 기준: 공식 Open API 문서 BattleUserResult.
@@ -85,7 +87,7 @@ export function listFields(g) {
     characterNum: opt(g.characterNum), weapon: opt(g.bestWeapon), weaponLv: opt(g.bestWeaponLevel),
     core: opt(g.traitFirstCore), subs: codes(g.traitFirstSub).concat(codes(g.traitSecondSub)), tactical: opt(g.tacticalSkillGroup),
     route: opt(g.routeIdOfStart) || null, startArea: num(g.placeOfStart),
-    gameRank: opt(g.gameRank), victory: g.victory ? 1 : 0,
+    gameRank: rankOf(g.gameRank), victory: g.victory ? 1 : 0,
     kills: z(g.playerKill), assists: z(g.playerAssistant), deaths: z(g.playerDeaths), teamKill: z(g.teamKill),
     teamElim: opt(g.teamElimination), clutch: opt(g.clutchCount), terminate: opt(g.terminateCount),
     killers: parseMap(g.deathDetails), victims: parseMap(g.killDetails),

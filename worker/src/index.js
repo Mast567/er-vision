@@ -13,6 +13,7 @@ import './features/notes.js';
 const VERSION = 'v0.4';
 const OWNER_REFRESH_MS = 6 * 3600 * 1000;
 const META_REFRESH_MS = 24 * 3600 * 1000;
+const MAX_SEASONS = 8;
 const ACTIVE_MS = 60 * 86400 * 1000;   // 60일 안에 들어온 사람만 자동 수집 (게임 API는 90일까지만 보관)
 
 async function handle(request, env) {
@@ -34,7 +35,7 @@ async function handle(request, env) {
   const admin = () => { if (!u.is_admin) throw new Error('관리자만 쓸 수 있습니다.'); };
   switch (action) {
     case 'bootstrap': return bootstrap(ctx, u);
-    case 'seasonStats': return okObj(u.nickname ? await seasonStats(ctx, await ownerUid(ctx, u), toInt(p.limit, 8)) : []);
+    case 'seasonStats': return okObj(u.nickname ? await seasonStats(ctx, await ownerUid(ctx, u), Math.min(Math.max(toInt(p.limit, MAX_SEASONS), 1), MAX_SEASONS)) : []);
     case 'refresh':
       return okObj(await withLock(ctx, 'owner:' + u.id, 90000, () => ownerRefresh(ctx, u), async () => ({ added: 0, remaining: await pendingOwner(ctx, u), busy: true })));
     case 'lookup': return quickLookup(ctx, nick, quota(ctx, u, 'quick'));
@@ -57,10 +58,11 @@ async function handle(request, env) {
   }
 }
 
-// 1분마다: 정밀 분석 대기열 → 가장 오래 수집하지 않은 사용자 한 명(형식이 낮은 경기 다시 채우기 포함) → 메타
+// 1분마다: 만료된 kv 정리 → 정밀 분석 대기열 → 가장 오래 수집하지 않은 사용자 한 명(형식이 낮은 경기 다시 채우기 포함) → 메타
 async function tick(env) {
   const ctx = makeCtx(env);
   await withLock(ctx, 'tick', 55000, async () => {
+    await ctx.db.prepare("DELETE FROM kv WHERE expires < ?").bind(Date.now()).run();
     if (await workJob(ctx)) return;
     const now = Date.now();
     const u = await ctx.db.prepare(`SELECT * FROM users u WHERE u.nickname <> '' AND u.last_seen > ?

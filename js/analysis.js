@@ -40,7 +40,7 @@ const Analysis = (() => {
         startAreaName: NAMES.areas[g.startArea] || sa.ko || sa.name || (g.startArea == null ? '' : String(g.startArea)),
         killers, killerText: killers.slice(0, 2).map(k => k.name).join(', '),
         date: d, day: String(g.startDtm).slice(0, 10), hour: d.getHours(), week: isoWeek(d),
-        win: g.gameRank === 1 ? 1 : 0, top3: g.gameRank <= 3 ? 1 : 0,
+        win: g.gameRank === 1 ? 1 : 0, top3: g.gameRank >= 1 && g.gameRank <= 3 ? 1 : 0,
         // 10분 안에 탈락: 생존 시간(공식 playTime) 기준. 코발트는 공식 페이즈 1 데스 기준
         early: mode === 6 ? ((g.d1 || 0) > 0 ? 1 : 0) : (g.gameRank > 1 && g.surviveMin < 10 ? 1 : 0),
         late: (g.surviveMin || 0) >= 18 ? 1 : 0,
@@ -63,7 +63,7 @@ const Analysis = (() => {
     const perMin = (key) => r1(mean(nums(G.map(g => g[key] == null ? null : g[key] / Math.max(g.surviveMin || 1, 1)))));
     return {
       n, low: n < MIN_N,
-      avgRank: r2(mean(G.map(g => g.gameRank))), winRate: pct(wins, n), top3Rate: pct(top3, n), conv: top3 ? wins / top3 : null,
+      avgRank: r2(mean(nums(G.map(g => g.gameRank)))), winRate: pct(wins, n), top3Rate: pct(top3, n), conv: top3 ? wins / top3 : null,
       avgRp: r1(mean(G.map(g => g.rpChange))), sumRp: G.reduce((s, g) => s + g.rpChange, 0), avgRpPure: r1(mean(nums(G.map(g => g.rpPure)))),
       earlyRate: pct(G.filter(g => g.early).length, n), lateReach: pct(G.filter(g => g.late).length, n),
       avgKills: r2(mean(G.map(g => g.kills || 0))), avgDeaths: r2(mean(G.map(g => g.deaths || 0))),

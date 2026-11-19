@@ -87,18 +87,21 @@ const checkSummary = (s, where) => {
   for (const k of ['winRate', 'top3Rate', 'earlyRate', 'lateReach']) if (s[k] != null && !(s[k] >= 0 && s[k] <= 1)) fail(`${where}.${k} 범위`, s);
   if (s.conv != null && !(s.conv >= 0 && s.conv <= 1)) fail(`${where}.conv 범위`, s);
   for (const k of ['avgRp', 'avgRank', 'avgRpPure', 'kd', 'dmgPerMin', 'avgSurvive']) if (s[k] != null && !Number.isFinite(s[k])) fail(`${where}.${k} NaN`, s);
+  if (s.avgRank != null && !(s.avgRank >= 1 && s.avgRank <= 24)) fail(`${where}.avgRank 범위`, s.avgRank);
 };
+// 등수를 모르는 경기는 승리·TOP3로 세지 않는다
+const knownRank = g => Number.isInteger(g.gameRank) && g.gameRank >= 1;
 for (let i = 0; i < Math.max(30, N / 50); i++) {
   const raw = Array.from({ length: int(0, 120) }, () => {
     const g = normGame(randRow());
     if (rnd() < 0.2) Object.assign(g, { v: undefined, killerChar: 'Blair', d1: 1, killers: undefined });   // 옛 형식 경기
-    if (typeof g.gameRank !== 'number') g.gameRank = int(1, 8);
     if (rnd() < 0.3) g.startDtm = `2026-11-${String(int(1, 19)).padStart(2, '0')} ${String(int(0, 23)).padStart(2, '0')}:00:00`;
     return g;
   });
   try {
     const G = A.enrich(raw, meta, [{ id: 41, start: '2026-10-01 00:00:00', end: '2026-12-31 00:00:00' }]);
     checkSummary(A.summary(G), 'summary');
+    G.forEach(g => { if (!knownRank(g) && (g.win || g.top3)) fail('등수 없는 경기가 TOP3', g.gameRank); });
     for (const f of ['byCharacter', 'byCharWeapon', 'byCore', 'byTactical', 'byStartArea', 'byRange', 'byWeek', 'byHour', 'byRank', 'byKiller', 'bySessionIndex', 'byTeamGap', 'byLobbyGap', 'masteryCurve', 'survivalBuckets']) {
       const rows = A[f](G);
       rows.forEach(r => checkSummary(r, f));
