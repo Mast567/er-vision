@@ -10,10 +10,11 @@ import json, os, random, re, sys, http.server, urllib.parse, threading
 
 PORT, SEED = int(sys.argv[1]), int(sys.argv[2])
 HARSH = float(os.environ.get('HARSH', '1'))   # 오류 확률 배수 (거친 시험용)
+BURST = os.environ.get('BURST') == '1'        # 일부 경기(번호 % 5 == 0)는 상세 조회 처음 3번을 반드시 429로 돌려준다
 R = random.Random(SEED)
 LOCK = threading.Lock()
 NICKS = ['알파', 'beta"q', '감마\\x']
-STATE = {'next_game': 60000000, 'tokens': {}, 'calls': 0, 'detail_ok': set(), 'detail_404': set()}
+STATE = {'next_game': 60000000, 'tokens': {}, 'calls': 0, 'detail_ok': set(), 'detail_404': set(), 'burst': {}}
 USERS = {}
 
 
@@ -111,6 +112,9 @@ class H(http.server.BaseHTTPRequestHandler):
                 if self.too_many(0.05):
                     return
                 gid = int(m.group(1))
+                if BURST and gid % 5 == 0 and STATE['burst'].get(gid, 0) < 3:
+                    STATE['burst'][gid] = STATE['burst'].get(gid, 0) + 1
+                    return self.send({'message': 'Too Many Requests'}, 429, {'Retry-After': '0'})
                 if R.random() < min(0.1 * HARSH, 0.6):
                     STATE['detail_404'].add(gid)
                     return self.send({'code': 404, 'message': 'Not Found'})

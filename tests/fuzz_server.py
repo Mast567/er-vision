@@ -2,7 +2,7 @@
 """서버 전체 무작위 시험. 무작위 가짜 게임 API + 임시 DB의 wrangler dev 를 띄우고 수집 결과를 정답과 맞춰 본다.
 
 필요: tools/mock_discord.py 가 127.0.0.1:8791 에서 실행 중일 것.
-사용: python3 tests/fuzz_server.py <시드> [<시드> ...]   (환경 변수 HARSH=3 이면 오류를 3배 자주 낸다)
+사용: python3 tests/fuzz_server.py <시드> [<시드> ...]   (환경 변수 HARSH=3 이면 오류를 3배 자주 낸다, BURST=1 이면 일부 경기 상세를 처음 3번 429로 막는다)
 """
 import json, os, re, shutil, subprocess, sys, tempfile, time, urllib.parse, urllib.request
 

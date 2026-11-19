@@ -17,7 +17,7 @@ export class ErApi {
       const r = await fetch(url, { headers });
       if (r.status === 429) {
         const after = Number(r.headers.get('Retry-After'));
-        await sleep(Math.min(Number.isFinite(after) && after > 0 ? after * 1000 : 3000, 10000));
+        await sleep(Math.min(r.headers.get('Retry-After') !== null && Number.isFinite(after) && after >= 0 ? Math.max(after * 1000, 500) : 3000, 10000));
         if (this.left <= 0) throw new BudgetError();
         continue;
       }
