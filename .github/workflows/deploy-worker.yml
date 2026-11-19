@@ -5,7 +5,7 @@ name: Deploy worker
 on:
   push:
     branches: [main]
-    paths: ['worker/**', '.github/workflows/deploy-worker.yml']
+    paths: ['worker/**', 'tools/build_names.py', '.github/workflows/deploy-worker.yml']
   workflow_dispatch:
 
 concurrency:
@@ -48,18 +48,16 @@ jobs:
           done
 
       - name: D1 데이터베이스 준비 (없으면 만든다)
-        run: |
-          find_id() { npx wrangler d1 list --json | jq -r '.[] | select(.name=="er-vision") | (.uuid // .id // .database_id)' | head -1; }
-          ID=$(find_id)
-          if [ -z "$ID" ]; then
-            npx wrangler d1 create er-vision < /dev/null
-            ID=$(find_id)
-          fi
-          if [ -z "$ID" ]; then echo "::error::D1 데이터베이스 ID를 찾지 못했습니다. 토큰에 Account / D1 / Edit 권한이 있는지 확인하세요."; exit 1; fi
-          sed -i "s/__D1_ID__/$ID/" wrangler.toml
+        run: ./scripts/prepare-d1.sh
 
       - name: DB 구조 적용
         run: npx wrangler d1 migrations apply er-vision --remote
+
+      - name: 이름표 넣기 (실패해도 배포는 계속)
+        continue-on-error: true
+        env:
+          ER_API_KEY: ${{ secrets.ER_API_KEY }}
+        run: python3 ../tools/build_names.py names.sql && npx wrangler d1 execute er-vision --remote --file names.sql
 
       - name: 배포
         # 처음 만드는 Worker는 Cloudflare 쪽 반영이 늦어 후속 설정이 실패할 때가 있어 한 번 더 시도한다

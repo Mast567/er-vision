@@ -114,6 +114,7 @@
   }
   async function loadBoot() {
     const b = await API.get('bootstrap');
+    Analysis.setNames(b.names);
     S.boot = b; S.games = Analysis.enrich(b.games || [], b.meta, b.seasons);
     $('#owner-chip').textContent = (b.owner.nickname || b.me.name || '닉네임 미설정') + (b.owner.nickname ? ' · 마지막 수집 ' + (b.owner.lastFetch || '-') : '');
     renderModePick(S.games);

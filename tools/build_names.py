@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""게임 API의 한국어 언어 파일과 데이터 테이블에서 사이트가 쓰는 이름표(js/data/names.js)를 만든다.
+"""게임 API의 한국어 언어 파일과 데이터 테이블에서 사이트가 쓰는 이름표를 만들어, 서버 DB(settings.names)에 넣을 SQL로 쓴다.
 
-언어 파일은 5MB라 서버(Worker)에서 읽으면 CPU 한도를 넘기 쉽다. 그래서 GitHub Actions가 주기적으로 이 스크립트를 돌린다.
-사용: ER_API_KEY=... python3 tools/build_names.py   (키가 헤더로 주입되는 환경이면 아무 값이나 넣어도 된다)
+- 언어 파일은 5MB라 서버(Worker)에서 읽으면 CPU 한도를 넘기 쉬워 GitHub Actions가 이 스크립트를 돌린다.
+- API 약관(지식재산권 조항)상 게임 텍스트를 파일째 공개 저장소에 두지 않는다. 이름표는 DB에만 두고 로그인한 사용자에게만 준다.
+사용: ER_API_KEY=... python3 tools/build_names.py <출력 SQL 경로>
+      그 다음 npx wrangler d1 execute er-vision --remote --file <출력 SQL 경로>
 """
 import json, os, sys, time, urllib.request
 
 BASE = 'https://open-api.bser.io'
-OUT = os.path.join(os.path.dirname(__file__), '..', 'js', 'data', 'names.js')
 
 # 공식 문서 4.5 MasteryCode (무기 숙련도). 문서에 한글 이름이 함께 실려 있다.
 WEAPONS = {1: '글러브', 2: '톤파', 3: '방망이', 4: '채찍', 5: '투척', 6: '암기', 7: '활', 8: '석궁', 9: '권총', 10: '돌격 소총',
@@ -56,9 +57,8 @@ def main():
     if len(characters) < 50 or len(areas) < 10:
         sys.exit(f'이름표가 너무 작습니다 (캐릭터 {len(characters)}, 지역 {len(areas)}). 저장하지 않습니다.')
     body = json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
-    os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    with open(OUT, 'w', encoding='utf-8') as f:
-        f.write('/* tools/build_names.py가 만든 파일. 직접 고치지 않는다. */\nwindow.ERV_NAMES = ' + body + ';\n')
+    with open(sys.argv[1], 'w', encoding='utf-8') as f:
+        f.write("INSERT INTO settings (key, value) VALUES ('names', '" + body.replace("'", "''") + "') ON CONFLICT(key) DO UPDATE SET value = excluded.value;\n")
     print(f'캐릭터 {len(characters)}, 지역 {len(areas)}, 증강 {len(traits)}, 전술 스킬 {len(tactical)}')
 
 

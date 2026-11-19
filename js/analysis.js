@@ -8,7 +8,10 @@ const Analysis = (() => {
 
   const MIN_N = 10;   // 이보다 적은 판수의 묶음은 결론을 내지 않는다
   const MODE_NAME = { 2: '일반', 3: '랭크', 6: '코발트' };
-  const NAMES = window.ERV_NAMES || { characters: {}, areas: {}, weapons: {}, traits: {}, tactical: {} };
+  const EMPTY_NAMES = { characters: {}, areas: {}, weapons: {}, traits: {}, tactical: {} };
+  let NAMES = EMPTY_NAMES;
+  // 한글 이름표는 서버 bootstrap으로 받는다 (없으면 meta의 이름을 쓴다)
+  const setNames = n => { NAMES = Object.assign({}, EMPTY_NAMES, n || {}); };
 
   // 일반·코발트는 API가 시즌을 0으로 주므로 날짜로 시즌을 붙인다
   function seasonByDate(d, seasons) {
@@ -149,5 +152,5 @@ const Analysis = (() => {
   const MODE_ORDER = { 3: 0, 2: 1, 6: 2 };
   function modesIn(G) { return [...new Set(G.map(g => g.mode))].sort((a, b) => (MODE_ORDER[a] ?? 9) - (MODE_ORDER[b] ?? 9)); }
 
-  return { MIN_N, MODE_NAME, modesIn, seasonsIn, enrich, summary, groupBy, byCharacter, byCharWeapon, byCore, byTactical, byStartArea, byRange, byWeek, byHour, byRank, byKiller, bySessionIndex, byTeamGap, byLobbyGap, breakEven, masteryCurve, recentVsPrev, survivalBuckets, session, mean, pct };
+  return { setNames, MIN_N, MODE_NAME, modesIn, seasonsIn, enrich, summary, groupBy, byCharacter, byCharWeapon, byCore, byTactical, byStartArea, byRange, byWeek, byHour, byRank, byKiller, bySessionIndex, byTeamGap, byLobbyGap, breakEven, masteryCurve, recentVsPrev, survivalBuckets, session, mean, pct };
 })();

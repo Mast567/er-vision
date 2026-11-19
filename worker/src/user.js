@@ -79,5 +79,7 @@ export async function bootstrap(ctx, u) {
   }
   const owner = { nickname: u.nickname, uid: u.uid, lastFetch: kst(u.last_fetch_ms) };
   const me = { name: u.discord_name || '', admin: !!u.is_admin, legacyAvailable: !s.legacyClaimedBy && !!ctx.env.SITE_TOKEN, limits: LIMITS };
-  return okRaw('{"owner":' + JSON.stringify(owner) + ',"me":' + JSON.stringify(me) + ',"meta":' + meta + ',"seasons":' + JSON.stringify(seasonList) + ',"games":' + games + extra + '}');
+  // 한글 이름표(GitHub Actions가 넣음). 약관상 공개 저장소가 아니라 로그인한 사용자에게만 준다.
+  const names = s.names && s.names.startsWith('{') ? s.names : 'null';
+  return okRaw('{"owner":' + JSON.stringify(owner) + ',"me":' + JSON.stringify(me) + ',"meta":' + meta + ',"names":' + names + ',"seasons":' + JSON.stringify(seasonList) + ',"games":' + games + extra + '}');
 }

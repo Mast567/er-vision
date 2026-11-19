@@ -80,6 +80,7 @@ const ctx = { window: { ERV_NAMES: { characters: { 22: '루크' }, areas: { 60: 
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(new URL('../js/analysis.js', import.meta.url), 'utf8') + ';this.Analysis = Analysis;', ctx);
 const A = ctx.Analysis;
+A.setNames(ctx.window.ERV_NAMES);
 const meta = { characters: { 22: { name: 'Luke', ko: '', range: '근접' } }, areas: {} };
 const checkSummary = (s, where) => {
   if (!s.n) return;
