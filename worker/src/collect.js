@@ -12,6 +12,8 @@ export const REFRESH_COOLDOWN_MS = 10 * 60 * 1000;
 
 // 경기 목록을 최신부터 넘긴다. known이 있으면 이미 가진 경기를 만나는 곳에서 멈춘다.
 // save는 API가 준 원래 줄을 받는다. 반환값 next가 null이면 끝까지 읽었다는 뜻이다.
+// 호출 예산 소진·429·서버 오류는 그 자리에서 멈추고 next를 돌려준다. 멈춘 위치를 저장하지 않으면, 다음 수집이 맨 앞의
+// 이미 받은 경기에서 "끝"으로 판단해 그 사이 경기를 건너뛴다. 그 밖의 오류(바뀐 UID의 404 등)는 그대로 던진다.
 async function collectList(ctx, uid, { next = null, modes, maxPages, known, save }) {
   let pages = 0, added = 0, complete = false;
   try {
@@ -27,7 +29,7 @@ async function collectList(ctx, uid, { next = null, modes, maxPages, known, save
       pages++; next = res.next || null;
       if (hit || !next || !all.length) { complete = true; break; }
     }
-  } catch (e) { if (!e.budget) throw e; }
+  } catch (e) { if (!(e.budget || e.status === 429 || e.status >= 500)) throw e; }
   return { next: complete ? null : next, added, pages };
 }
 

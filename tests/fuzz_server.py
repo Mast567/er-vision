@@ -4,7 +4,7 @@
 필요: tools/mock_discord.py 가 127.0.0.1:8791 에서 실행 중일 것.
 사용: python3 tests/fuzz_server.py <시드> [<시드> ...]   (환경 변수 HARSH=3 이면 오류를 3배 자주 낸다, BURST=1 이면 일부 경기 상세를 처음 3번 429로 막는다)
 """
-import json, os, re, shutil, subprocess, sys, tempfile, time, urllib.parse, urllib.request
+import json, os, re, shutil, signal, subprocess, sys, tempfile, time, urllib.parse, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKER = os.path.join(ROOT, 'worker')
@@ -55,6 +55,14 @@ class Run:
             self.problems.append(msg)
 
     def start(self):
+        for port in (self.mport, self.wport):
+            try:
+                urllib.request.urlopen(f'http://127.0.0.1:{port}/', timeout=1)
+                raise RuntimeError(f'포트 {port}에 이미 다른 서버가 있습니다')
+            except urllib.error.HTTPError:
+                raise RuntimeError(f'포트 {port}에 이미 다른 서버가 있습니다')
+            except (urllib.error.URLError, ConnectionError, OSError):
+                pass
         for name in ['src', 'migrations']:
             shutil.copytree(os.path.join(WORKER, name), os.path.join(self.tmp, name))
         for name in ['wrangler.toml', 'package.json']:
@@ -72,20 +80,24 @@ class Run:
                     'DISCORD_AUTHORIZE_URL=http://127.0.0.1:8791/oauth2/authorize\nDISCORD_API=http://127.0.0.1:8791/api\nSITE_ORIGINS=http://127.0.0.1:8765\n')
         state = os.path.join(self.tmp, 'state')
         subprocess.run(['npx', 'wrangler', 'd1', 'migrations', 'apply', 'er-vision', '--local', '--persist-to', state], cwd=self.tmp, capture_output=True, check=True)
-        self.procs.append(subprocess.Popen([sys.executable, os.path.join(ROOT, 'tests', 'mock_random_api.py'), str(self.mport), str(self.seed)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=os.environ))
+        self.procs.append(subprocess.Popen([sys.executable, os.path.join(ROOT, 'tests', 'mock_random_api.py'), str(self.mport), str(self.seed)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=os.environ, start_new_session=True))
         self.log = open(os.path.join(self.tmp, 'wrangler.log'), 'w')
-        self.procs.append(subprocess.Popen(['npx', 'wrangler', 'dev', '--port', str(self.wport), '--ip', '127.0.0.1', '--persist-to', state, '--test-scheduled'], cwd=self.tmp, stdout=self.log, stderr=subprocess.STDOUT))
+        self.procs.append(subprocess.Popen(['npx', 'wrangler', 'dev', '--port', str(self.wport), '--ip', '127.0.0.1', '--persist-to', state, '--test-scheduled'], cwd=self.tmp, stdout=self.log, stderr=subprocess.STDOUT, start_new_session=True))
         wait_for(self.M + '/__calls')
         wait_for(self.W + '?action=ping', 90)
 
+    # npx 아래의 workerd까지 함께 꺼야 다음 실행이 같은 포트의 옛 서버와 대화하지 않는다
     def stop(self):
         for p in self.procs:
-            p.terminate()
+            try:
+                os.killpg(p.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
         for p in self.procs:
             try:
                 p.wait(10)
             except Exception:
-                p.kill()
+                os.killpg(p.pid, signal.SIGKILL)
 
     def sql(self, cmd):
         out = subprocess.run(['npx', 'wrangler', 'd1', 'execute', 'er-vision', '--local', '--persist-to', os.path.join(self.tmp, 'state'), '--json', '--command', cmd], cwd=self.tmp, capture_output=True, text=True, check=True).stdout
