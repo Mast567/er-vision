@@ -10,12 +10,12 @@ const QUICK_PAGES = 5;           // 최근 기록 분석: 목록 5쪽(약 50판)
 const DEEP_MAX_PAGES = 40;
 export const REFRESH_COOLDOWN_MS = 10 * 60 * 1000;
 
-// 경기 목록을 최신부터 넘긴다. known이 있으면 이미 가진 경기를 만나는 곳에서 멈춘다.
-// save는 API가 준 원래 줄을 받는다. 반환값 next가 null이면 끝까지 읽었다는 뜻이다.
-// 호출 예산 소진·429·서버 오류는 그 자리에서 멈추고 next를 돌려준다. 멈춘 위치를 저장하지 않으면, 다음 수집이 맨 앞의
-// 이미 받은 경기에서 "끝"으로 판단해 그 사이 경기를 건너뛴다. 그 밖의 오류(바뀐 UID의 404 등)는 그대로 던진다.
+// 경기 목록을 최신부터 넘긴다. known이 있으면 이미 가진 경기를 만나는 곳에서 멈춘다. save는 API가 준 원래 줄을 받는다.
+// 반환: complete(끝까지 읽음), next(이어 받을 위치: 처음부터면 null), stopped(예산 소진·429·서버 오류로 중간에 멈춤).
+// 멈춘 위치를 저장하지 않으면 다음 수집이 맨 앞의 이미 받은 경기에서 "끝"으로 판단해 그 사이 경기를 건너뛴다.
+// 그 밖의 오류(바뀐 UID의 404 등)는 그대로 던진다.
 async function collectList(ctx, uid, { next = null, modes, maxPages, known, save }) {
-  let pages = 0, added = 0, complete = false;
+  let pages = 0, added = 0, complete = false, stopped = false;
   try {
     while (pages < maxPages) {
       const res = await ctx.api.get(`/v1/user/games/uid/${uid}` + (next ? `?next=${next}` : ''));
@@ -29,8 +29,8 @@ async function collectList(ctx, uid, { next = null, modes, maxPages, known, save
       pages++; next = res.next || null;
       if (hit || !next || !all.length) { complete = true; break; }
     }
-  } catch (e) { if (!(e.budget || e.status === 429 || e.status >= 500)) throw e; }
-  return { next: complete ? null : next, added, pages };
+  } catch (e) { if (!(e.budget || e.status === 429 || e.status >= 500)) throw e; stopped = true; }
+  return { complete, next: complete ? null : next, stopped, added, pages };
 }
 
 // 상세가 빈 경기에 팀원·로비 RP를 채운다. 요청 과다(429)는 다음 실행에서 다시 시도하고, 그 밖의 실패는 빈 채로 완료 처리한다.
@@ -78,9 +78,9 @@ export async function ownerRefresh(ctx, u) {
     known: backfill ? null : ids => existingIds(ctx, 'SELECT game_id FROM u_games WHERE user_id = ? AND game_id IN (?*)', ids, [u.id]),
     save: rows => upsertUserGames(ctx, u.id, rows)
   }));
-  u.list_next = r.next ? String(r.next) : '';
+  u.list_next = r.complete ? '' : String(r.next ?? '');
   u.last_fetch_ms = Date.now();
-  if (backfill && !r.next) u.data_v = DATA_V;
+  if (backfill && r.complete) u.data_v = DATA_V;
   await db.prepare('UPDATE users SET list_next = ?, last_fetch_ms = ?, data_v = ? WHERE id = ?').bind(u.list_next, u.last_fetch_ms, u.data_v || 1, u.id).run();
 
   const pend = (await db.prepare('SELECT json FROM u_games WHERE user_id = ? AND detail_done = 0 ORDER BY start_dtm LIMIT ?').bind(u.id, ctx.detailPerRun).all()).results;
@@ -89,7 +89,7 @@ export async function ownerRefresh(ctx, u) {
     for (const h of ext.onOwnerGameDetail) { try { const st = h(ctx, n, players); if (st) stmts.push(st); } catch (e) { console.log('ext', e); } }
     await db.batch(stmts);
   });
-  return { added: (await count()) - before, remaining: await pendingOwner(ctx, u), listing: r.next ? 'more' : 'done', backfill };
+  return { added: (await count()) - before, remaining: await pendingOwner(ctx, u), listing: r.complete ? 'done' : 'more', backfill };
 }
 
 // ---- 정밀 분석: 닉네임별 작업 대기열 (cache_games, jobs)
@@ -127,8 +127,8 @@ async function stepJob(ctx, job) {
     const saveUid = id => db.batch([db.prepare('UPDATE jobs SET uid = ? WHERE nickname = ?').bind(id, nick), db.prepare('UPDATE cache_users SET uid = ? WHERE nickname = ?').bind(id, nick)]);
     const r = await withUid(ctx, nick, job.uid, saveUid, id => collectList(ctx, id, { next: job.next_token || null, modes: [RANKED_MODE], maxPages: Math.min(ctx.listPages, DEEP_MAX_PAGES - (job.pages || 0)), save: rows => upsertCacheGames(ctx, nick, rows) }));
     const pages = (job.pages || 0) + r.pages;
-    const phase = (!r.next || pages >= DEEP_MAX_PAGES) ? 'detail' : 'list';
-    await db.prepare("UPDATE jobs SET status = 'running', phase = ?, next_token = ?, pages = ?, total = (SELECT COUNT(*) FROM cache_games WHERE nickname = ?), updated_at = ? WHERE nickname = ?").bind(phase, r.next ? String(r.next) : '', pages, nick, Date.now(), nick).run();
+    const phase = (r.complete || pages >= DEEP_MAX_PAGES) ? 'detail' : 'list';
+    await db.prepare("UPDATE jobs SET status = 'running', phase = ?, next_token = ?, pages = ?, total = (SELECT COUNT(*) FROM cache_games WHERE nickname = ?), updated_at = ? WHERE nickname = ?").bind(phase, r.complete ? '' : String(r.next ?? ''), pages, nick, Date.now(), nick).run();
     return;
   }
   const save = saveCacheDetail(ctx, nick);
@@ -152,7 +152,7 @@ async function cacheIncremental(ctx, nick, uid) {
     known: ids => existingIds(ctx, 'SELECT game_id FROM cache_games WHERE nickname = ? AND game_id IN (?*)', ids, [nick]),
     save: rows => upsertCacheGames(ctx, nick, rows)
   }));
-  if (r.next) await kvPut(ctx, 'cnext:' + nick, String(r.next), 86400); else await kvDel(ctx, 'cnext:' + nick);
+  if (r.complete) await kvDel(ctx, 'cnext:' + nick); else if (r.next) await kvPut(ctx, 'cnext:' + nick, String(r.next), 86400);
   await fillDetails(ctx, await pendingCache(ctx, nick), saveCacheDetail(ctx, nick));
   await db.prepare('UPDATE cache_users SET last_fetch = ?, game_count = (SELECT COUNT(*) FROM cache_games WHERE nickname = ?) WHERE nickname = ?').bind(Date.now(), nick, nick).run();
 }
@@ -215,7 +215,9 @@ export async function quickLookup(ctx, nick, guard) {
   if (guard) await guard.check();
   let uid = await lookupUid(ctx, nick);
   const games = [];
-  await withUid(ctx, nick, uid, async id => { uid = id; }, id => collectList(ctx, id, { modes: [RANKED_MODE], maxPages: QUICK_PAGES, save: async rows => { games.push(...rows.map(normGame)); } }));
+  const r = await withUid(ctx, nick, uid, async id => { uid = id; }, id => collectList(ctx, id, { modes: [RANKED_MODE], maxPages: QUICK_PAGES, save: async rows => { games.push(...rows.map(normGame)); } }));
+  // 중간에 막힌 결과는 일부만 있으므로 캐시하지 않고 다시 시도하게 한다
+  if (r.stopped) { const e = new Error('게임 API가 바빠서 기록을 다 받지 못했습니다. 잠시 뒤 다시 시도하세요.'); e.status = 429; throw e; }
   games.sort((a, b) => a.startDtm < b.startDtm ? -1 : 1);
   const cur = (await seasons(ctx)).find(s => s.current);
   let stats = [];

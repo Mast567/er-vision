@@ -209,7 +209,7 @@ class Run:
             if q['ok']:
                 self.verify_games(q['data']['games'], [g for g in self.mock('/__truth')[nick_c][:50] if g['matchingMode'] == 3], '5단계 최근 기록', need_detail=False)
             else:
-                self.check('429' in q['error'], f'lookup 실패: {q}')
+                self.check('429' in q['error'] or '바빠서' in q['error'], f'lookup 실패: {q}')
 
             # 1분 cron이 다른 사용자(C)를 끝까지 모으는지
             bob = self.login('bob')
