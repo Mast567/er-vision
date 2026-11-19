@@ -70,9 +70,9 @@ async function tick(env) {
       await withLock(ctx, 'owner:' + u.id, 90000, async () => {
         try { await ownerRefresh(ctx, u); }
         catch (e) {
-          // 닉네임이 바뀌었거나 없어진 사람이 다른 사람의 수집을 막지 않게 순서를 뒤로 보낸다
+          // 닉네임이 바뀌었거나 없어진 사람이 다른 사람의 수집을 막지 않게 순서를 뒤로 보낸다. 요청 과다(429)는 다음 실행에서 다시 시도한다.
           console.log('owner refresh error', u.id, e && e.message);
-          await ctx.db.prepare('UPDATE users SET last_fetch_ms = ? WHERE id = ?').bind(Date.now(), u.id).run();
+          if (e.status !== 429) await ctx.db.prepare('UPDATE users SET last_fetch_ms = ? WHERE id = ?').bind(Date.now(), u.id).run();
         }
       });
       return;

@@ -31,7 +31,7 @@ async function collectList(ctx, uid, { next = null, modes, maxPages, known, save
   return { next: complete ? null : next, added, pages };
 }
 
-// 상세가 빈 경기에 팀원·로비 RP를 채운다. 상세 요청이 실패한 경기는 빈 채로 완료 처리한다.
+// 상세가 빈 경기에 팀원·로비 RP를 채운다. 요청 과다(429)는 다음 실행에서 다시 시도하고, 그 밖의 실패는 빈 채로 완료 처리한다.
 async function fillDetails(ctx, rows, save) {
   await ctx.loadChars();
   let done = 0;
@@ -39,7 +39,7 @@ async function fillDetails(ctx, rows, save) {
     if (ctx.api.left <= 0) break;
     const n = JSON.parse(row.json);
     let players = [];
-    try { players = await ctx.api.players(n.gameId); } catch (e) { if (e.budget) break; }
+    try { players = await ctx.api.players(n.gameId); } catch (e) { if (e.budget || e.status === 429) break; }
     attachDetail(n, players, ctx.charName);
     await save(n, players);
     done++;
@@ -48,8 +48,10 @@ async function fillDetails(ctx, rows, save) {
 }
 
 // 새 경기는 넣고, 이미 있는 경기는 목록에서 오는 칸만 새 모양으로 덮는다(상세에서 얻은 칸은 남는다).
-const upsertUserGames = (ctx, uid, rows) => batchAll(ctx, rows.map(g => { const n = normGame(g); return ctx.db.prepare('INSERT INTO u_games (user_id, game_id, start_dtm, season_id, mode, json, detail_done) VALUES (?, ?, ?, ?, ?, ?, 0) ON CONFLICT(user_id, game_id) DO UPDATE SET json = json_patch(u_games.json, ?)').bind(uid, n.gameId, n.startDtm, n.seasonId, n.mode, JSON.stringify(n), listPatch(g)); }));
-const upsertCacheGames = (ctx, nick, rows) => batchAll(ctx, rows.map(g => { const n = normGame(g); return ctx.db.prepare('INSERT INTO cache_games (nickname, game_id, start_dtm, season_id, json, detail_done) VALUES (?, ?, ?, ?, ?, 0) ON CONFLICT(nickname, game_id) DO UPDATE SET json = json_patch(cache_games.json, ?)').bind(nick, n.gameId, n.startDtm, n.seasonId, JSON.stringify(n), listPatch(g)); }));
+// json_patch는 객체 칸을 합쳐 버리므로, 통째로 바꿔야 하는 객체 칸은 먼저 지운다.
+const REPLACED_MAPS = "'$.killers', '$.victims'";
+const upsertUserGames = (ctx, uid, rows) => batchAll(ctx, rows.map(g => { const n = normGame(g); return ctx.db.prepare('INSERT INTO u_games (user_id, game_id, start_dtm, season_id, mode, json, detail_done) VALUES (?, ?, ?, ?, ?, ?, 0) ON CONFLICT(user_id, game_id) DO UPDATE SET json = json_patch(json_remove(u_games.json, ' + REPLACED_MAPS + '), ?)').bind(uid, n.gameId, n.startDtm, n.seasonId, n.mode, JSON.stringify(n), listPatch(g)); }));
+const upsertCacheGames = (ctx, nick, rows) => batchAll(ctx, rows.map(g => { const n = normGame(g); return ctx.db.prepare('INSERT INTO cache_games (nickname, game_id, start_dtm, season_id, json, detail_done) VALUES (?, ?, ?, ?, ?, 0) ON CONFLICT(nickname, game_id) DO UPDATE SET json = json_patch(json_remove(cache_games.json, ' + REPLACED_MAPS + '), ?)').bind(nick, n.gameId, n.startDtm, n.seasonId, JSON.stringify(n), listPatch(g)); }));
 
 // ---- 사용자 경기
 export async function ownerUid(ctx, u) {
@@ -107,12 +109,13 @@ const pendingCache = (ctx, nick) => ctx.db.prepare('SELECT json FROM cache_games
 const saveCacheDetail = (ctx, nick) => n => ctx.db.prepare('UPDATE cache_games SET json = ?, detail_done = 1 WHERE nickname = ? AND game_id = ?').bind(JSON.stringify(n), nick, n.gameId).run();
 
 // 대기열 맨 앞 작업을 조금 진행한다. 진행률 확인 요청과 cron이 함께 부르므로 잠금으로 겹치지 않게 한다.
+// 호출 예산 소진·요청 과다(429)는 오류로 멈추지 않고 다음 실행이 이어 간다.
 export async function workJob(ctx) {
   const job = await ctx.db.prepare("SELECT * FROM jobs WHERE status IN ('running','queued') ORDER BY CASE status WHEN 'running' THEN 0 ELSE 1 END, created_at LIMIT 1").first();
   if (!job) return false;
   if (!(await lock(ctx, 'jobs', 60000))) return true;
   try { await stepJob(ctx, job); }
-  catch (e) { if (!e.budget) await ctx.db.prepare("UPDATE jobs SET status = 'error', error = ?, updated_at = ? WHERE nickname = ?").bind(String(e.message || e), Date.now(), job.nickname).run(); }
+  catch (e) { if (!e.budget && e.status !== 429) await ctx.db.prepare("UPDATE jobs SET status = 'error', error = ?, updated_at = ? WHERE nickname = ?").bind(String(e.message || e), Date.now(), job.nickname).run(); }
   finally { await unlock(ctx, 'jobs'); }
   return true;
 }
