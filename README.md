@@ -47,18 +47,26 @@ GitHub Pages 화면 ──(비밀 코드 포함 요청)──┘      └── 
 ```
 index.html          화면 뼈대
 css/style.css       스타일 (다크, PC 우선)
-js/api.js           데이터 창구 호출
+js/config.js        서버 주소 기본값 (비워 두면 첫 화면에서 묻는다)
+js/api.js           서버 호출, 로그인 세션 저장
 js/analysis.js      경기 배열 → 지표 (내 경기와 조회 경기가 공유)
 js/app.js           화면 로직 (해시 라우팅, 기능 등록 창구 ERV)
 js/features/*.js    기능 파일 (하나씩 격리, index.html 한 줄로 켜고 끔)
 js/vendor/chart.umd.js  Chart.js 4.4.1 (MIT)
-worker/src/index.js        데이터 창구 핵심 (Cloudflare Worker, 확장 고리 ext)
-worker/src/features/*.js   기능별 데이터 창구 파일
+worker/src/index.js        요청 라우터, 1분 cron
+worker/src/auth.js         디스코드 로그인, 세션
+worker/src/collect.js      경기 수집 (내 경기, 정밀 분석 대기열, 최근 기록 분석)
+worker/src/user.js         계정 데이터 (복기노트, 리포트, 공유 링크, 사용량, 가져오기, 삭제)
+worker/src/store.js        D1 도우미, 잠금, 메타·시즌
+worker/src/er-api.js       게임 API 호출, 경기 정규화
+worker/src/ext.js          확장 고리
+worker/src/features/*.js   기능별 서버 파일
 worker/migrations/*.sql    D1 테이블 구조
 .github/workflows/deploy-worker.yml  자동 배포
 apps-script/*.gs           이전 데이터 창구 (구글 시트)
 tools/mock_server.py 개발용 가짜 데이터 창구 (Apps Script 흉내)
 tools/mock_er_api.py 개발용 가짜 게임 API (Worker 로컬 시험용)
+tools/mock_discord.py 개발용 가짜 디스코드 로그인
 ```
 
 ## 버전
@@ -69,7 +77,7 @@ tools/mock_er_api.py 개발용 가짜 게임 API (Worker 로컬 시험용)
 | 큰 기능 변화 | 0.x 단위 +1 | v0.19 → v0.2 → v0.21 |
 | 정식 공개 | 정수 | v1 |
 
-사이트(`js/app.js`)와 데이터 창구(`apps-script/Code.gs`)의 VERSION은 같은 번호를 쓰고, 설정 화면에서 볼 수 있다. git 태그도 같은 이름으로 단다.
+사이트(`js/app.js`)와 서버(`worker/src/index.js`)의 VERSION은 같은 번호를 쓰고, 설정 화면에서 볼 수 있다.
 
 ## 외부 라이브러리
 

@@ -7,8 +7,7 @@
   const MIN_GAMES = 5;      // 칭호를 줄 최소 판수
   const LIST_MIN = 2;       // 목록에 보일 최소 판수
 
-  // 칭호 목록. 기준은 '내 다른 조합들과 비교해 가장 높은 것'이라 모든 조합이 하나 이상 받는다. 문구는 자유롭게 바꿔도 된다.
-  // modes: 어떤 모드에서 쓰는 칭호인지 (3 랭크, 2 일반, 6 코발트). 모드는 화면 위 선택기에서 고른 것 기준이라 코발트 킬과 랭크 킬이 섞이지 않는다.
+  // 칭호는 내 다른 조합들과 비교한 상대 순위로 준다. modes: 쓰는 모드 (3 랭크, 2 일반, 6 코발트)
   const TITLES = [
     { id: 'win', name: '정점 트리오', desc: '함께했을 때 1등 비율이 가장 높다', metric: g => g.winRate, modes: [2, 3] },
     { id: 'cwin', name: '승리 공식', desc: '함께했을 때 승률이 가장 높다', metric: g => g.winRate, modes: [6] },
@@ -70,7 +69,7 @@
       const best = Math.max(...vals.map(x => x.v));
       vals.forEach(x => {
         const better = vals.filter(y => y.v > x.v).length;
-        const pctl = 1 - better / vals.length; // 1 = 1위
+        const pctl = 1 - better / vals.length;
         scores.get(x.g).push({ t, pctl, v: x.v, first: x.v === best });
       });
     });
@@ -97,7 +96,7 @@
     const G = filtered(S.games);
     const mm = mateMap();
     v.appendChild(el('div', { class: 'section-head' }, [el('h1', {}, '같이 한 사람들'), el('span', { class: 'muted small' }, '본인에게만 보이는 화면. 사람을 평가하지 않고, 이 멤버와 할 때 잘 되는 것만 찾는다')]));
-    if (!(S.boot.teammates || []).length) { v.appendChild(el('div', { class: 'card empty' }, '팀원 기록이 아직 없습니다. 데이터 창구에 Companions.gs가 설치돼 있고 새 경기가 들어오면 쌓입니다.')); return; }
+    if (!(S.boot.teammates || []).length) { v.appendChild(el('div', { class: 'card empty' }, '팀원 기록이 아직 없습니다. 새 경기가 들어오면 쌓입니다.')); return; }
     const { trios, people } = buildGroups(G, mm);
     assignTitles(trios); assignTitles(people);
     const withGames = G.filter(g => mm.has(String(g.gameId))).length;
@@ -137,7 +136,6 @@
         g.n >= MIN_GAMES ? el('div', { class: 'row', style: 'margin:6px 0 10px' }, (g.titles || []).map(t => el('div', { class: 'card', style: 'padding:10px 14px;background:var(--surface-2)' }, [el('div', { style: 'font-weight:700;font-size:16px' }, (t.first ? '🏅 ' : '') + t.name), el('div', { class: 'small muted' }, t.desc + (t.first ? '' : ' (내 조합들 중 상위권)'))]))) : el('p', { class: 'muted' }, `아직 ${g.n}판. 칭호는 ${MIN_GAMES}판부터 생깁니다. 같이 ${MIN_GAMES - g.n}판 더 해봐야 압니다.`),
         el('div', { class: 'info-grid', html: highlights(g.games).map(([k, val]) => `<div><div class="k">${k}</div><div>${esc(val)}</div></div>`).join('') })
       ]));
-      // 이 멤버와 할 때 잘 되는 것
       const byRange = Analysis.byRange(g.games), byChar = Analysis.byCharacter(g.games);
       const cmp = isCobalt() ? ((a, b) => (b.winRate || 0) - (a.winRate || 0)) : ((a, b) => a.avgRank - b.avgRank);
       const fmtRes = r => isCobalt() ? `승률 ${fmtP(r.winRate)}` : `평균 ${fmtN(r.avgRank)}등`;

@@ -1,6 +1,5 @@
-/* ER Vision - 화면 로직 (해시 라우팅, 상태, 렌더링) */
 (() => {
-  const VERSION = 'v0.3';   // 작은 수정 v0.1n (v0.19 다음은 v0.1.10), 큰 기능 v0.2·v0.3, 정식 공개 v1
+  const VERSION = 'v0.31';
   const $ = (sel, root = document) => root.querySelector(sel);
   const el = (tag, attrs = {}, children = []) => {
     const n = document.createElement(tag);
@@ -16,13 +15,17 @@
 
   const S = { boot: null, games: [], season: 'all', mode: 3, seasonStats: null, charts: [], lookup: null, lookupPending: null, selectedGame: null, notesFilter: { rank: 'all', char: 'all', reviewed: 'all' } };
 
-  // ---------- 공통 ----------
+  Chart.defaults.color = '#c3c2b7'; Chart.defaults.borderColor = '#2c2c2a'; Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+
   function toast(msg, err) { const t = $('#toast'); t.textContent = msg; t.hidden = false; t.classList.toggle('err', !!err); clearTimeout(t._h); t._h = setTimeout(() => t.hidden = true, err ? 6000 : 3000); }
   function killCharts() { S.charts.forEach(c => { try { c.destroy(); } catch (e) {} }); S.charts = []; }
-  function chart(canvas, cfg) {
-    Chart.defaults.color = '#c3c2b7'; Chart.defaults.borderColor = '#2c2c2a'; Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
-    const c = new Chart(canvas, cfg); S.charts.push(c); return c;
+  function chart(canvas, cfg) { const c = new Chart(canvas, cfg); S.charts.push(c); return c; }
+  // 주차별 선 그래프. pct: 0~1 값을 %로
+  function weekLine(canvas, W, label, value, color, opts = {}) {
+    return chart(canvas, { type: 'line', data: { labels: W.map(w => w.key.replace(/^\d{4}-/, '')), datasets: [{ label, data: W.map(w => { const x = value(w); return x == null ? null : opts.pct ? Math.round(x * 100) : x; }), borderColor: color, backgroundColor: color, tension: .3, pointRadius: 4, borderWidth: 2 }] },
+      options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { afterLabel: ctx => opts.after ? opts.after(W[ctx.dataIndex]) : `판수 ${W[ctx.dataIndex].n}` } } }, scales: { y: opts.y || (opts.pct ? { min: 0, max: 100, ticks: { callback: x => x + '%' } } : { beginAtZero: true }) } } });
   }
+  const chartCard = title => el('div', { class: 'card' }, [el('h3', {}, title), el('div', { class: 'chart-wrap' }, el('canvas'))]);
   function seasonName(id) { const s = (S.boot && S.boot.seasons || []).find(x => x.id === id); return s ? s.name : ('시즌ID ' + id); }
   function filtered(games) {
     let L = S.mode === 'all' ? games : games.filter(g => g.mode === S.mode);
@@ -39,7 +42,6 @@
     return `<span class="delta ${d === 0 ? '' : good ? 'up' : 'down'}">이전 30판 대비 ${d > 0 ? '+' : ''}${fmt(d)}</span>`;
   }
 
-  // ---------- 시즌 선택 ----------
   function renderModePick(games) {
     const sel = $('#mode-pick'); sel.innerHTML = '';
     const modes = Analysis.modesIn(games);
@@ -61,8 +63,7 @@
     sel.onchange = () => { S.season = sel.value === 'all' ? 'all' : Number(sel.value); route(); };
   }
 
-  // ---------- 라우팅 + 기능 등록 창구 ----------
-  // 기능 파일은 ERV.registerView({ id, label, order, season, render }) 로 화면을 추가한다. 핵심 코드는 건드리지 않는다.
+  // 기능 파일은 ERV.registerView({ id, label, order, season, render })로 화면을 추가한다
   const views = {};
   const registry = [];
   function registerView(def) {
@@ -90,7 +91,6 @@
   }
   window.addEventListener('hashchange', route);
 
-  // ---------- 게이트 (로그인) ----------
   function renderGate(v) {
     $('#season-pick-wrap').style.display = 'none';
     $('#owner-chip').textContent = '';
@@ -120,13 +120,11 @@
     renderSeasonPick(S.games);
     if (b.owner.nickname) API.get('seasonStats').then(st => { S.seasonStats = st; if (location.hash.includes('dashboard') || !location.hash) route(); }).catch(() => {});
   }
-  // 로그인 만료 등으로 세션이 사라지면 첫 화면으로 돌아간다
   function handleErr(e, prefix) {
     if (e && e.needLogin) { S.boot = null; route(); toast('다시 로그인하세요.', true); return; }
     toast((prefix || '실패: ') + e.message, true);
   }
 
-  // ---------- 공유된 복기노트 (로그인 없이) ----------
   async function renderShared(v, id) {
     v.appendChild(el('h1', {}, '공유된 복기노트'));
     const box = el('div', { class: 'card', style: 'max-width:820px' }, '불러오는 중...');
@@ -150,7 +148,6 @@
     } catch (e) { box.textContent = '열 수 없습니다: ' + e.message; }
   }
 
-  // ---------- 대시보드 ----------
   views.dashboard = v => {
     const G = filtered(S.games);
     const sum = Analysis.summary(G), rv = Analysis.recentVsPrev(G);
@@ -167,16 +164,12 @@
         tile('분당 피해', String(sum.dmgPerMin), deltaHtml(rv.recent.dmgPerMin, rv.prev.dmgPerMin, false, x => x.toFixed(0))),
         tile('팀 킬 평균', fmtN(sum.avgTeamKill, 1), deltaHtml(rv.recent.avgTeamKill, rv.prev.avgTeamKill, false, x => x.toFixed(1)))
       ]));
-      const two = el('div', { class: 'grid two section' });
-      const c1 = el('div', { class: 'card' }, [el('h3', {}, '주차별 승률'), el('div', { class: 'chart-wrap' }, el('canvas'))]);
-      const c2 = el('div', { class: 'card' }, [el('h3', {}, '주차별 K/D'), el('div', { class: 'chart-wrap' }, el('canvas'))]);
-      two.append(c1, c2); v.appendChild(two);
+      const c1 = chartCard('주차별 승률'), c2 = chartCard('주차별 K/D');
+      v.appendChild(el('div', { class: 'grid two section' }, [c1, c2]));
       const W = Analysis.byWeek(G);
-      chart($('canvas', c1), { type: 'line', data: { labels: W.map(w => w.key.replace(/^\d{4}-/, '')), datasets: [{ label: '승률', data: W.map(w => w.winRate == null ? null : Math.round(w.winRate * 100)), borderColor: SERIES[0], backgroundColor: SERIES[0], tension: .3, pointRadius: 4, borderWidth: 2 }] }, options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { afterLabel: ctx => `판수 ${W[ctx.dataIndex].n}` } } }, scales: { y: { min: 0, max: 100, ticks: { callback: x => x + '%' } } } } });
-      chart($('canvas', c2), { type: 'line', data: { labels: W.map(w => w.key.replace(/^\d{4}-/, '')), datasets: [{ label: 'K/D', data: W.map(w => w.kd), borderColor: SERIES[2], backgroundColor: SERIES[2], tension: .3, pointRadius: 4, borderWidth: 2 }] }, options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } } });
-      const sec = el('div', { class: 'section' }, [el('div', { class: 'section-head' }, [el('h2', {}, '최근 경기'), el('a', { href: '#/notes' }, '복기노트로 →')])]);
-      sec.appendChild(gamesTable(G.slice(-20).reverse(), g => { S.selectedGame = g.gameId; location.hash = '#/notes'; }));
-      v.appendChild(sec);
+      weekLine($('canvas', c1), W, '승률', w => w.winRate, SERIES[0], { pct: true });
+      weekLine($('canvas', c2), W, 'K/D', w => w.kd, SERIES[2]);
+      recentGames(v, G);
       return;
     }
     const k = el('div', { class: 'grid kpi' }, [
@@ -191,26 +184,25 @@
     ]);
     v.appendChild(k);
 
-    const two = el('div', { class: 'grid two section' });
-    const c1 = el('div', { class: 'card' }, [el('h3', {}, '주차별 평균 등수 (낮을수록 좋음)'), el('div', { class: 'chart-wrap' }, el('canvas'))]);
-    const c2 = el('div', { class: 'card' }, [el('h3', {}, hasRp() ? 'RP 추이 (경기 후 RP)' : '주차별 상위 3팀 비율'), el('div', { class: 'chart-wrap' }, el('canvas'))]);
-    two.append(c1, c2); v.appendChild(two);
+    const c1 = chartCard('주차별 평균 등수 (낮을수록 좋음)'), c2 = chartCard(hasRp() ? 'RP 추이 (경기 후 RP)' : '주차별 상위 3팀 비율');
+    v.appendChild(el('div', { class: 'grid two section' }, [c1, c2]));
     const W = Analysis.byWeek(G);
-    chart($('canvas', c1), { type: 'line', data: { labels: W.map(w => w.key.replace(/^\d{4}-/, '')), datasets: [{ label: '평균 등수', data: W.map(w => w.avgRank), borderColor: SERIES[0], backgroundColor: SERIES[0], tension: .3, pointRadius: 4, borderWidth: 2 }] },
-      options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { afterLabel: ctx => `판수 ${W[ctx.dataIndex].n} · 1등 ${W[ctx.dataIndex].winRate != null ? (W[ctx.dataIndex].winRate * 100).toFixed(0) : 0}%` } } }, scales: { y: { reverse: true, min: 1, max: 8, ticks: { stepSize: 1 } } } } });
+    weekLine($('canvas', c1), W, '평균 등수', w => w.avgRank, SERIES[0], { y: { reverse: true, min: 1, max: 8, ticks: { stepSize: 1 } }, after: w => `판수 ${w.n} · 1등 ${fmtP(w.winRate)}` });
     if (hasRp()) {
       const R = G.filter(g => g.rp != null);
       chart($('canvas', c2), { type: 'line', data: { labels: R.map(g => g.startDtm.slice(5, 16)), datasets: [{ label: 'RP', data: R.map(g => g.rp), borderColor: SERIES[2], backgroundColor: SERIES[2], pointRadius: 0, borderWidth: 2, tension: .1 }] },
         options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { maxTicksLimit: 8 } } } } });
       renderSeasonCards(v);
     } else {
-      chart($('canvas', c2), { type: 'line', data: { labels: W.map(w => w.key.replace(/^\d{4}-/, '')), datasets: [{ label: '상위 3팀', data: W.map(w => w.top3Rate == null ? null : Math.round(w.top3Rate * 100)), borderColor: SERIES[2], backgroundColor: SERIES[2], tension: .3, pointRadius: 4, borderWidth: 2 }] }, options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100, ticks: { callback: x => x + '%' } } } } });
+      weekLine($('canvas', c2), W, '상위 3팀', w => w.top3Rate, SERIES[2], { pct: true });
     }
-
+    recentGames(v, G);
+  };
+  function recentGames(v, G) {
     const sec = el('div', { class: 'section' }, [el('div', { class: 'section-head' }, [el('h2', {}, '최근 경기'), el('a', { href: '#/notes' }, '복기노트로 →')])]);
     sec.appendChild(gamesTable(G.slice(-20).reverse(), g => { S.selectedGame = g.gameId; location.hash = '#/notes'; }));
     v.appendChild(sec);
-  };
+  }
   function renderSeasonCards(v) {
     const st = S.seasonStats;
     const sec = el('div', { class: 'section' }, [el('div', { class: 'section-head' }, [el('h2', {}, '시즌 요약'), el('span', { class: 'muted small' }, '공식 시즌 통계 (과거 시즌 포함)')])]);
@@ -236,7 +228,6 @@
     t.appendChild(tb); wrap.appendChild(t); return wrap;
   }
 
-  // ---------- 분석 ----------
   views.analysis = v => { v.appendChild(el('h1', {}, '분석')); renderAnalysis(v, filtered(S.games), true); };
   function statTable(rows, label, extraCols = [], mode) {
     const m = mode === undefined ? S.mode : mode;
@@ -253,7 +244,6 @@
     if (!G.length) { v.appendChild(el('div', { class: 'card empty' }, '분석할 경기가 없습니다.')); return; }
     const sum = Analysis.summary(G);
     if (isCobalt() && withNotes) { renderCobaltAnalysis(v, G); return; }
-    // 1) 생존 시간 구간별 등수 : 핵심 메시지
     const SB = Analysis.survivalBuckets(G), PD = Analysis.phaseDeaths(G);
     const sec1 = el('div', { class: 'section' }, [el('div', { class: 'section-head' }, [el('h2', {}, '어디서 탈락하는가'), el('span', { class: 'muted small' }, '생존 시간 구간별 성적과 데스가 발생한 단계')])]);
     const g1 = el('div', { class: 'grid two' });
@@ -263,7 +253,6 @@
     barChart($('canvas', c1), SB.map(b => b.key), SB.map(b => b.n), SERIES[0], { tooltip: ctx => `판수 ${ctx.raw} · 평균 등수 ${fmtN(SB[ctx.dataIndex].avgRank)} · 1등 ${fmtP(SB[ctx.dataIndex].winRate)}` });
     barChart($('canvas', c2), ['1단계(초반)', '2단계(중반)', '3단계(후반)'], [PD.d1, PD.d2, PD.d3], [SERIES[7], SERIES[3], SERIES[6]], { tooltip: ctx => `${ctx.raw}회 (${(ctx.raw / (PD.total || 1) * 100).toFixed(0)}%)` });
 
-    // 2) 근접 vs 원거리
     const BR = Analysis.byRange(G);
     const sec2 = el('div', { class: 'section' }, [el('div', { class: 'section-head' }, [el('h2', {}, '근접 vs 원거리'), el('span', { class: 'muted small' }, '사거리 유형별 성적. 한쪽에서 되는 습관을 다른 쪽으로 옮길 때 참고')])]);
     const g2 = el('div', { class: 'grid two' });
@@ -273,12 +262,10 @@
     const dpm = BR.map(r => { const L = G.filter(g => g.range === r.key); return { dealt: Analysis.mean(L.map(g => g.dmgDealt / Math.max(g.surviveMin, 1))), taken: Analysis.mean(L.map(g => g.dmgTaken / Math.max(g.surviveMin, 1))) }; });
     chart($('canvas', c3), { type: 'bar', data: { labels: BR.map(r => r.key), datasets: [{ label: '가한 피해/분', data: dpm.map(d => Math.round(d.dealt)), backgroundColor: SERIES[0], borderRadius: 4, borderSkipped: 'bottom', maxBarThickness: 36 }, { label: '받은 피해/분', data: dpm.map(d => Math.round(d.taken)), backgroundColor: SERIES[1], borderRadius: 4, borderSkipped: 'bottom', maxBarThickness: 36 }] }, options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } } });
 
-    // 3) 캐릭터별
     const BC = Analysis.byCharacter(G);
     const sec3 = el('div', { class: 'section' }, [el('div', { class: 'section-head' }, [el('h2', {}, '캐릭터별'), el('span', { class: 'muted small' }, '판수 많은 순. 10판 미만은 운의 영향이 크다')])]);
     sec3.appendChild(statTable(BC, '캐릭터', [['사거리', r => esc((G.find(g => g.charName === r.key) || {}).range || '')]])); v.appendChild(sec3);
 
-    // 4) 시작 지역 / 세션 피로 / 시간대 / 팀 구성
     const SA = Analysis.byStartArea(G), SI = Analysis.bySessionIndex(G), BH = Analysis.byHour(G), TS = Analysis.byTeamStrength(G), KL = Analysis.byKiller(G).slice(0, 10);
     const sec4 = el('div', { class: 'section' }, [el('h2', {}, '시작 지역별')]); sec4.appendChild(statTable(SA, '시작 지역')); v.appendChild(sec4);
     const sec5 = el('div', { class: 'section' }, [el('div', { class: 'section-head' }, [el('h2', {}, '세션 피로'), el('span', { class: 'muted small' }, '하루 중 몇 판째인가에 따른 성적')])]);
@@ -320,7 +307,6 @@
     const sec3 = el('div', { class: 'section' }, [el('h2', {}, '나를 잡은 캐릭터')]); sec3.appendChild(statTable(KL, '킬러 캐릭터')); v.appendChild(sec3);
   }
 
-  // ---------- 복기노트 ----------
   views.notes = v => {
     const G = filtered(S.games).slice().reverse();
     const notes = S.boot.notes || [];
@@ -330,7 +316,6 @@
     const left = el('div'), right = el('div', { class: 'card editor' });
     layout.append(left, right); v.appendChild(layout);
 
-    // 필터
     const f = S.notesFilter;
     const chars = [...new Set(G.map(g => g.charName))].sort();
     const fl = el('div', { class: 'filters' });
@@ -388,10 +373,10 @@
       save.onclick = async () => {
         save.disabled = true;
         const body = { gameId: g.gameId, moment: F.moment.value, situation: F.situation.value, tag1: F.tag1.value, tag2: F.tag2.value, tag3: F.tag3.value, good: F.good.value, nextAction: F.nextAction.value, free: F.free.value, lesson: F.lesson.value, minutes: mins.value, reviewedAt: n.reviewedAt || new Date().toISOString().slice(0, 10) };
-        try { await API.post('saveNote', body); const idx = notes.findIndex(x => String(x.gameId) === String(g.gameId)); if (idx >= 0) notes[idx] = Object.assign(notes[idx], body); else notes.push(body); S.boot.notes = notes; noteMap.set(String(g.gameId), body); toast('저장했습니다.'); renderList(); renderEditor(); } catch (e) { toast('저장 실패: ' + e.message, true); save.disabled = false; }
+        try { await API.post('saveNote', body); const idx = notes.findIndex(x => String(x.gameId) === String(g.gameId)); if (idx >= 0) notes[idx] = Object.assign(notes[idx], body); else notes.push(body); S.boot.notes = notes; noteMap.set(String(g.gameId), body); toast('저장했습니다.'); renderList(); renderEditor(); } catch (e) { handleErr(e, '저장 실패: '); save.disabled = false; }
       };
       rowB.appendChild(save);
-      if (noteMap.has(String(g.gameId))) { const del = el('button', { class: 'btn danger' }, '삭제'); del.onclick = async () => { if (!confirm('이 경기의 복기노트를 삭제할까요?')) return; try { await API.post('deleteNote', { gameId: g.gameId }); S.boot.notes = notes.filter(x => String(x.gameId) !== String(g.gameId)); noteMap.delete(String(g.gameId)); toast('삭제했습니다.'); route(); } catch (e) { toast('삭제 실패: ' + e.message, true); } }; rowB.appendChild(del); }
+      if (noteMap.has(String(g.gameId))) { const del = el('button', { class: 'btn danger' }, '삭제'); del.onclick = async () => { if (!confirm('이 경기의 복기노트를 삭제할까요?')) return; try { await API.post('deleteNote', { gameId: g.gameId }); S.boot.notes = notes.filter(x => String(x.gameId) !== String(g.gameId)); noteMap.delete(String(g.gameId)); toast('삭제했습니다.'); route(); } catch (e) { handleErr(e, '삭제 실패: '); } }; rowB.appendChild(del); }
       right.appendChild(rowB);
       if (noteMap.has(String(g.gameId))) right.appendChild(shareBox(g.gameId));
       right.appendChild(checklist());
@@ -424,7 +409,6 @@
     renderList(); renderEditor();
   };
 
-  // ---------- 코칭 리포트 ----------
   views.reports = v => {
     const R = (S.boot.reports || []).slice().reverse();
     v.appendChild(el('div', { class: 'section-head' }, [el('h1', {}, '코칭 리포트'), el('span', { class: 'muted small' }, 'Claude 대화에서 "코칭 리포트 써줘"라고 하면 새 리포트가 추가됩니다')]));
@@ -432,7 +416,6 @@
     R.forEach(r => v.appendChild(el('div', { class: 'card section' }, [el('div', { class: 'section-head' }, [el('h2', {}, r.date), el('span', { class: 'muted small' }, r.scope)]), el('div', { class: 'report' }, r.body), r.next ? el('div', { class: 'card', style: 'margin-top:12px;background:var(--surface-2)' }, [el('h3', {}, '다음 점검 항목'), el('div', { class: 'report' }, r.next)]) : null])));
   };
 
-  // ---------- 닉네임 조회 ----------
   views.lookup = v => {
     v.appendChild(el('h1', {}, '닉네임 조회'));
     v.appendChild(el('p', { class: 'muted', html: '<b>최근 기록 분석</b>은 최근 약 50판을 몇 초 안에 보여줍니다(팀원·로비 RP 제외). <b>정밀 분석</b>은 90일 전체와 경기별 상세를 가져오며, 처음 보는 닉네임은 수 분이 걸리고 이후에는 새 경기만 더합니다(10분 간격).' }));
@@ -442,7 +425,6 @@
     const out = el('div');
     v.appendChild(el('div', { class: 'row' }, [inp, b1, b2])); v.appendChild(status); v.appendChild(out);
     let pollId = 0;
-    // 그리다가 오류가 나도 빈 화면으로 두지 않는다.
     const show = (data) => {
       try { drawResult(data); } catch (e) {
         console.error(e);
@@ -453,22 +435,24 @@
     const drawResult = (data) => {
       out.innerHTML = ''; killCharts();
       const G = Analysis.enrich(data.games || [], S.boot.meta, S.boot.seasons);
-      S.lookup = Object.assign({}, data, { enriched: G });
+      S.lookup = data;
       const sum = Analysis.summary(G);
       out.appendChild(el('div', { class: 'section-head' }, [el('h2', {}, `${data.nickname} · ${data.mode === 'deep' ? '정밀 분석' : '최근 기록 분석'} (${G.length}판)`), el('span', { class: 'muted small' }, data.mode === 'deep' ? `마지막 수집 ${data.lastFetch ? new Date(data.lastFetch).toLocaleString('ko-KR') : '-'}` : (data.cached ? '10분 캐시' : '방금 조회'))]));
       if (!G.length) { out.appendChild(el('div', { class: 'card empty' }, '최근 랭크 경기가 없습니다.')); return; }
       out.appendChild(el('div', { class: 'grid kpi' }, [tile('판수', String(sum.n)), tile('평균 등수', fmtN(sum.avgRank)), tile('1등 비율', fmtP(sum.winRate)), tile('상위 3팀', fmtP(sum.top3Rate)), tile('판당 RP', fmtS(sum.avgRp)), tile('초반 사망 경기', fmtP(sum.earlyDeathRate)), tile('후반 도달(18분+)', fmtP(sum.lateReach))]));
       if (data.seasonStats && data.seasonStats.length) { const save = S.seasonStats; S.seasonStats = data.seasonStats; renderSeasonCards(out); S.seasonStats = save; }
-      const saveMode = S.mode; S.mode = 3;   // 닉네임 조회는 랭크 기준
-      try { renderAnalysis(out, G, false); } finally { S.mode = saveMode; }
-      out.appendChild(el('div', { class: 'section' }, [el('h2', {}, '경기 목록'), gamesTable(G.slice().reverse().slice(0, 50), null, { noReview: true })]));
+      const saveMode = S.mode; S.mode = 3;   // 닉네임 조회는 랭크만 모은다
+      try {
+        renderAnalysis(out, G, false);
+        out.appendChild(el('div', { class: 'section' }, [el('h2', {}, '경기 목록'), gamesTable(G.slice().reverse().slice(0, 50), null, { noReview: true })]));
+      } finally { S.mode = saveMode; }
     };
     const poll = async (nick) => {
       try {
         const d = await API.get('jobStatus', { nickname: nick });
         if (d.status === 'done') { status.textContent = '수집 완료. 결과를 불러옵니다...'; const full = await API.get('deep', { nickname: nick }); S.lookupPending = null; status.textContent = ''; show(full); b1.disabled = b2.disabled = false; return true; }
         if (d.status === 'error' || d.status === 'none') { S.lookupPending = null; status.textContent = d.status === 'error' ? '오류: ' + d.error : '작업을 찾지 못했습니다. 정밀 분석을 다시 누르세요.'; b1.disabled = b2.disabled = false; return true; }
-        // 게이지: 목록 단계 0~20% (예상 판수 대비), 상세 단계 20~100%
+        // 진행률: 목록 단계 0~20%, 상세 단계 20~100%
         const est = d.estimate || d.total || 0;
         let pct = 0;
         if (d.phase === 'list') pct = est ? Math.min(20, Math.round((d.total || 0) / est * 20)) : 0;
@@ -479,7 +463,7 @@
       } catch (e) { status.textContent = '상태 확인 실패: ' + e.message; }
       return false;
     };
-    // 앞 요청이 끝난 뒤 다음 요청을 보낸다. 화면을 떠나면 멈춘다.
+    // 앞 요청이 끝나야 다음 요청을 보낸다. 화면을 떠나면 멈추고, 돌아오면 S.lookupPending으로 이어 간다.
     const startPolling = nick => {
       const my = ++pollId;
       const loop = async () => {
@@ -489,14 +473,12 @@
       };
       loop();
     };
-    b1.onclick = async () => { const nick = inp.value.trim(); if (!nick) return; b1.disabled = b2.disabled = true; status.textContent = '조회 중...'; try { const d = await API.get('lookup', { nickname: nick }); status.textContent = ''; show(d); } catch (e) { status.textContent = '실패: ' + e.message; } b1.disabled = b2.disabled = false; };
+    b1.onclick = async () => { const nick = inp.value.trim(); if (!nick) return; b1.disabled = b2.disabled = true; status.textContent = '조회 중...'; try { const d = await API.get('lookup', { nickname: nick }); status.textContent = ''; show(d); } catch (e) { if (e.needLogin) return handleErr(e); status.textContent = '실패: ' + e.message; } b1.disabled = b2.disabled = false; };
     b2.onclick = async () => { const nick = inp.value.trim(); if (!nick) return; b1.disabled = b2.disabled = true; status.textContent = '정밀 분석 요청 중...'; try { const d = await API.get('deep', { nickname: nick }); if (d.status === 'done') { status.textContent = ''; show(d); b1.disabled = b2.disabled = false; } else { status.textContent = '수집을 시작했습니다. 이 화면을 열어 두면 가장 빠르고, 닫아도 서버가 천천히 이어서 모읍니다.'; S.lookupPending = nick; startPolling(nick); } } catch (e) { status.textContent = '실패: ' + e.message; b1.disabled = b2.disabled = false; } };
-    // 수집 중에 다른 화면에 다녀오면 이어서 확인한다.
     if (S.lookupPending) { b1.disabled = b2.disabled = true; status.textContent = `${S.lookupPending} 정밀 분석 상태를 확인하는 중...`; startPolling(S.lookupPending); }
     else if (S.lookup && S.lookup.games) show(S.lookup);
   };
 
-  // ---------- 설정 ----------
   views.settings = v => {
     v.appendChild(el('h1', {}, '설정'));
     const o = S.boot.owner, me = S.boot.me || {};
@@ -527,11 +509,10 @@
     };
     const reload = el('button', { class: 'btn' }, '다시 불러오기'); reload.onclick = async () => { try { await loadBoot(); toast('불러왔습니다.'); route(); } catch (e) { handleErr(e); } };
     const logout = el('button', { class: 'btn' }, '로그아웃');
-    logout.onclick = async () => { try { await API.post('logout'); } catch (e) { /* 이미 만료됐어도 지운다 */ } API.store.session = ''; S.boot = null; location.hash = '#/dashboard'; route(); };
+    logout.onclick = async () => { try { await API.post('logout'); } catch (e) { /* 만료된 세션이어도 지운다 */ } API.store.session = ''; S.boot = null; location.hash = '#/dashboard'; route(); };
     r.append(refresh, reload, logout); card.appendChild(r);
     v.appendChild(card);
 
-    // 게임 닉네임: 저장하면 이 닉네임의 경기를 내 계정으로 모은다
     const ownerCard = el('div', { class: 'card section', style: 'max-width:720px' }, [el('h3', {}, '내 게임 닉네임'),
       el('p', { class: 'small muted' }, '저장하면 이 닉네임의 랭크·일반·코발트 경기를 6시간마다 자동으로 모읍니다. 복기노트와 코칭 리포트는 내 계정에만 저장되고 다른 사람에게 보이지 않습니다. 60일 동안 들어오지 않으면 자동 수집을 멈춥니다.')]);
     const nickInp = el('input', { type: 'text', style: 'max-width:240px' }); nickInp.value = o.nickname || '';
@@ -546,7 +527,6 @@
     ownerCard.appendChild(el('div', { class: 'row' }, [nickInp, nickBtn]));
     v.appendChild(ownerCard);
 
-    // v0.2까지 쌓은 데이터 (한 번만, 예전 비밀 코드가 있어야 한다)
     if (me.legacyAvailable) {
       const leg = el('div', { class: 'card section', style: 'max-width:720px' }, [el('h3', {}, '기존 데이터 가져오기'),
         el('p', { class: 'small muted' }, '로그인 기능이 생기기 전(v0.2)에 이 서버에 쌓은 경기·복기노트·코칭 리포트·팀원 기록을 내 계정으로 복사합니다. 예전에 쓰던 비밀 코드(SITE_TOKEN)가 필요하고, 한 계정만 한 번 가져갈 수 있습니다. 가져간 계정은 관리자가 됩니다.')]);
@@ -561,7 +541,6 @@
       v.appendChild(leg);
     }
 
-    // 백업과 복원
     const bak = el('div', { class: 'card section', style: 'max-width:720px' }, [el('h3', {}, '백업'), el('p', { class: 'small muted' }, '내 계정의 데이터 전체를 파일 하나로 내려받습니다. [백업 파일 불러오기]로 내 계정에 되살릴 수 있습니다(같은 경기의 노트는 파일 내용으로 덮어씁니다).')]);
     const dl = el('button', { class: 'btn' }, '백업 내려받기');
     dl.onclick = () => {
@@ -590,7 +569,6 @@
     bak.append(el('div', { class: 'row' }, [dl, fromFile, fileInp]), logBox);
     v.appendChild(bak);
 
-    // 개인정보와 계정 삭제
     const pv = el('div', { class: 'card section', style: 'max-width:720px' }, [el('h3', {}, '개인정보'),
       el('ul', { class: 'small', html: '<li>디스코드에서는 고유번호와 표시 이름만 받습니다. 이메일·친구 목록·서버 목록은 받지 않습니다.</li><li>저장하는 것: 디스코드 고유번호·이름, 게임 닉네임, 내 경기 기록, 복기노트, 코칭 리포트, 팀원 기록.</li><li>복기노트와 리포트는 나만 봅니다. 내가 만든 공유 링크를 아는 사람만 그 판 노트 하나를 볼 수 있습니다.</li><li>경기 기록 자체는 게임사 공개 API에서 누구나 조회할 수 있는 정보입니다.</li><li>계정을 삭제하면 위 데이터가 모두 지워지며 되돌릴 수 없습니다.</li>' })]);
     const del = el('button', { class: 'btn danger' }, '계정 삭제');
@@ -603,7 +581,6 @@
     v.appendChild(pv);
   };
 
-  // 백업 파일을 내 계정으로 되살린다
   async function restoreBackup(data, log) {
     if (!data || !Array.isArray(data.games)) throw new Error('백업 파일 형식이 아닙니다.');
     const send = (kind, items, extra = {}) => API.post('import', { kind, items, ...extra });
@@ -619,7 +596,6 @@
     return { games: check.games.length, notes: check.notes.length, reports: check.reports.length, teammates: (check.teammates || []).length };
   }
 
-  // ---------- 핵심 화면 등록 ----------
   registerView({ id: 'dashboard', label: '대시보드', order: 10, season: true, render: views.dashboard });
   registerView({ id: 'analysis', label: '분석', order: 20, season: true, render: views.analysis });
   registerView({ id: 'notes', label: '복기노트', order: 30, season: true, render: views.notes });
@@ -627,11 +603,9 @@
   registerView({ id: 'lookup', label: '닉네임 조회', order: 50, render: views.lookup });
   registerView({ id: 'settings', label: '설정', order: 90, render: views.settings });
 
-  // 기능 파일이 쓰는 공용 도구
   window.ERV = { VERSION, registerView, S, Analysis, route, helpers: { $, el, esc, fmtP, fmtN, fmtS, SERIES, tile, chart, rankBadge, phaseHtml, gamesTable, statTable, toast, filtered, seasonName, deltaHtml, isCobalt, hasRp } };
 
-  // ---------- 시작 (기능 파일들이 먼저 등록되도록 다음 틱에) ----------
-  // 주소 끝의 #login=… (로그인 직후), #login_error=…, ?api=… (서버 주소 알려 주기)를 읽고 주소창에서 지운다.
+  // #login=세션 (로그인 직후), #login_error=, ?api=서버주소 (공유 링크)를 읽고 주소창에서 지운다
   function readHashParams() {
     const h = location.hash;
     const m = h.match(/^#(login|login_error)=([^&]*)/);
@@ -645,6 +619,7 @@
       history.replaceState(null, '', location.pathname + location.search + location.hash.replace(/[?&#]api=[^&]+/, '').replace(/^$/, '#/dashboard'));
     }
   }
+  // 기능 파일들이 먼저 화면을 등록하도록 다음 틱에 시작한다
   setTimeout(async () => {
     readHashParams();
     const name = (location.hash.replace(/^#\/?/, '') || '').split(/[/?]/)[0];
