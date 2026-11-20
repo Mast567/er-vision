@@ -142,10 +142,10 @@ const Analysis = (() => {
     const blocks = bySessionIndex(G);
     const nextBlock = Math.min(Math.floor(T.length / 5), 3);
     const b = blocks.find(x => x.block === nextBlock);
-    if (T.length >= 5 && b && !b.low && b.avgRp < 0) warns.push(`내 기록에서 하루 ${b.key} 판은 평균 ${b.avgRp} RP였다 (${b.n}판).`);
+    if (T.length >= 5 && b && !b.low && b.avgRp < 0) warns.push(`내 기록에서 하루 ${b.key} 판은 평균 ${b.avgRp} RP였습니다 (${b.n}판).`);
     let streak = 0;
     for (let i = T.length - 1; i >= 0 && T[i].rpChange < 0; i--) streak++;
-    if (streak >= 3) warns.push(`오늘 ${streak}판 연속 RP가 줄었다.`);
+    if (streak >= 3) warns.push(`${streak}판 연속 RP가 줄었습니다.`);
     return { games: T, summary: s, streak, warns };
   }
   // API 시즌 이름 → 게임 안 이름. 게임 언어 파일 기준 Season10 = 시즌 1, Season21 = 시즌 12, Season1~9 = EA 시즌

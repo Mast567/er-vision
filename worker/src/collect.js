@@ -6,15 +6,17 @@ import { okRaw, okObj, joinRows } from './util.js';
 import { RANKED_MODE, kvGet, kvPut, kvDel, lock, unlock, existingIds, batchAll, seasons, seasonStats, lookupUid, withUid } from './store.js';
 
 const STORE_MODES = [2, 3, 6];   // 내 경기: 일반, 랭크, 코발트. 닉네임 조회는 랭크만
-const QUICK_PAGES = 5;           // 최근 기록 분석: 목록 5쪽(약 50판)
+const QUICK_GAMES = 30;          // 최근 기록 분석: 랭크 30판 (화면에서 10판/30판으로 나눠 본다)
+const QUICK_MAX_PAGES = 8;       // 일반·코발트가 섞여 있어도 목록 8쪽(80판)까지만 본다
 const DEEP_MAX_PAGES = 40;
 export const REFRESH_COOLDOWN_MS = 10 * 60 * 1000;
 
 // 경기 목록을 최신부터 넘긴다. known이 있으면 이미 가진 경기를 만나는 곳에서 멈춘다. save는 API가 준 원래 줄을 받는다.
-// 반환: complete(끝까지 읽음), next(이어 받을 위치: 처음부터면 null), stopped(예산 소진·429·서버 오류로 중간에 멈춤).
+// enough()가 참이면 필요한 만큼 모은 것이라 거기서 끝낸다.
+// 반환: complete(끝까지 또는 필요한 만큼 읽음), next(이어 받을 위치: 처음부터면 null), stopped(예산 소진·429·서버 오류로 중간에 멈춤).
 // 멈춘 위치를 저장하지 않으면 다음 수집이 맨 앞의 이미 받은 경기에서 "끝"으로 판단해 그 사이 경기를 건너뛴다.
 // 그 밖의 오류(바뀐 UID의 404 등)는 그대로 던진다.
-async function collectList(ctx, uid, { next = null, modes, maxPages, known, save }) {
+async function collectList(ctx, uid, { next = null, modes, maxPages, known, save, enough }) {
   let pages = 0, added = 0, complete = false, stopped = false;
   try {
     while (pages < maxPages) {
@@ -27,7 +29,7 @@ async function collectList(ctx, uid, { next = null, modes, maxPages, known, save
       for (const g of list) { if (have && have.has(g.gameId)) { hit = true; break; } fresh.push(g); }
       if (fresh.length) { await save(fresh); added += fresh.length; }
       pages++; next = res.next || null;
-      if (hit || !next || !all.length) { complete = true; break; }
+      if (hit || !next || !all.length || (enough && enough())) { complete = true; break; }
     }
   } catch (e) { if (!(e.budget || e.status === 429 || e.status >= 500)) throw e; stopped = true; }
   return { complete, next: complete ? null : next, stopped, added, pages };
@@ -219,7 +221,11 @@ export async function quickLookup(ctx, nick, guard) {
   if (guard) await guard.check();
   let uid = await lookupUid(ctx, nick);
   const games = [];
-  const r = await withUid(ctx, nick, uid, async id => { uid = id; }, id => collectList(ctx, id, { modes: [RANKED_MODE], maxPages: QUICK_PAGES, save: async rows => { games.push(...rows.map(normGame)); } }));
+  const r = await withUid(ctx, nick, uid, async id => { uid = id; }, id => collectList(ctx, id, {
+    modes: [RANKED_MODE], maxPages: QUICK_MAX_PAGES, enough: () => games.length >= QUICK_GAMES,
+    save: async rows => { games.push(...rows.map(normGame)); }
+  }));
+  games.splice(QUICK_GAMES);   // 목록은 최신부터 오므로 앞의 30판만 남긴다
   // 중간에 막힌 결과는 일부만 있으므로 캐시하지 않고 다시 시도하게 한다
   if (r.stopped) { const e = new Error('게임 API가 바빠서 기록을 다 받지 못했습니다. 잠시 뒤 다시 시도하세요.'); e.status = 429; throw e; }
   games.sort((a, b) => a.startDtm < b.startDtm ? -1 : 1);

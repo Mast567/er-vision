@@ -50,7 +50,7 @@
     const R = G.filter(g => g.rp != null);
     if (R.length < 2) return null;
     const box = chartBox(220);
-    const c = H.card('RP 추이', [box.wrap], { note: '경기 후 RP' });
+    const c = H.card(null, [box.wrap]);
     requestAnimationFrame(() => chart(box.canvas, {
       type: 'line',
       data: { labels: R.map(g => g.startDtm.slice(5, 10)), datasets: [{ data: R.map(g => g.rp), borderColor: css('--ac'), backgroundColor: css('--ac'), pointRadius: 0, borderWidth: 2, tension: 0.15 }] },
@@ -64,12 +64,12 @@
     v.appendChild(el('div', { class: 'page-head' }, [el('h1', {}, '홈'), el('span', { class: 'mu' }, `${S.mode === 'all' ? '전체 모드' : Analysis.MODE_NAME[S.mode]} · ${S.season === 'all' ? '전체 기간' : seasonName(S.season)}`)]));
     if (!S.boot.owner.nickname) { v.appendChild(H.card(null, [H.empty('내 계정에서 게임 닉네임을 저장하면 경기 기록을 모으기 시작합니다. 닉네임 조회는 지금 바로 쓸 수 있습니다.')])); return; }
     if (!G.length) { v.appendChild(H.card(null, [H.empty('이 모드·시즌에 저장된 경기가 없습니다. [지금 갱신]을 누르거나 다른 모드·시즌을 고르세요.')])); return; }
-    if (S.mode === 3 || S.mode === 'all') v.appendChild(S.seasonStats ? H.profileCard(S.boot.owner.nickname, S.seasonStats) : H.card(null, [H.empty('시즌 기록을 불러오는 중...')]));
+    if (S.mode === 3 || S.mode === 'all') v.appendChild(H.group('PROFILE', '내 프로필', [S.seasonStats ? H.profileCard(S.boot.owner.nickname, S.seasonStats) : H.card(null, [H.empty('시즌 기록을 불러오는 중...')])]));
     const F = findings(G);
-    if (F.length) v.appendChild(el('div', { class: 'grid findings' }, F));
-    v.appendChild(el('div', { class: 'grid two' }, [sessionCard(G), kpis(G)]));
-    if (hasRp()) { const c = rpChart(G); if (c) v.appendChild(c); }
-    v.appendChild(H.card('최근 경기', [H.gamesTable(G.slice(-10).reverse())], { note: '전체 목록은 기록 탭' }));
+    if (F.length) v.appendChild(H.group('FINDINGS', '관찰 결론', [el('div', { class: 'grid findings' }, F)]));
+    v.appendChild(H.group('NOW', '세션과 핵심 숫자', [el('div', { class: 'grid two' }, [sessionCard(G), H.card('핵심 숫자', [kpis(G)])])]));
+    if (hasRp()) { const c = rpChart(G); if (c) v.appendChild(H.group('TREND', 'RP 흐름', [c], el('span', { class: 'mu small' }, '경기 후 RP'))); }
+    v.appendChild(H.group('GAMES', '최근 경기', [H.card(null, [H.gamesTable(G.slice(-10).reverse())])], el('a', { href: '#/records', class: 'small' }, '전체 목록은 기록 탭')));
   }
 
   ERV.registerView({ id: 'home', label: '홈', order: 10, filters: true, render });

@@ -31,6 +31,13 @@
     title ? el('div', { class: 'card-head' }, [el('h2', {}, title), opts.note ? el('span', { class: 'card-note' }, opts.note) : null]) : null
   ].concat(children));
   const empty = text => el('div', { class: 'empty' }, text);
+  // 화면 안의 큰 묶음. 묶음 사이는 넓게, 묶음 안 카드끼리는 좁게 띄워 어디까지가 한 덩어리인지 보이게 한다.
+  const group = (kicker, title, children, right) => el('section', { class: 'group' }, [
+    el('div', { class: 'group-head' }, [kicker ? el('span', { class: 'group-kicker' }, kicker) : null, el('h2', { class: 'group-title' }, title), el('span', { class: 'group-rule' }), right || null])
+  ].concat(children));
+  // 여러 값 중 하나를 고르는 버튼 묶음. options: [[값, 글자], ...]
+  const segmented = (label, options, value, onPick) => el('div', { class: 'seg', role: 'group', 'aria-label': label },
+    options.map(([v, t]) => el('button', { type: 'button', class: 'seg-btn' + (v === value ? ' on' : ''), 'aria-pressed': String(v === value), onclick: () => onPick(v) }, t)));
 
   function rankBadge(g) {
     if (g.mode === 6) return el('span', { class: 'rank ' + (g.gameRank === 1 ? 'r1' : 'r8') }, g.gameRank === 1 ? '승' : '패');
@@ -115,5 +122,5 @@
     return el('section', { class: 'card profile' }, [head, nums, most, prev]);
   }
 
-  ERV.helpers = { el, esc, fmtP, fmtN, fmtS, signed, tile, finding, card, empty, sample, rankBadge, statTable, gamesTable, rpStrip, metric, rankRows, profileCard, filtered: ERV.filtered, isCobalt: ERV.isCobalt, hasRp: ERV.hasRp, toast: UI.toast };
+  ERV.helpers = { el, esc, fmtP, fmtN, fmtS, signed, tile, finding, card, empty, group, segmented, sample, rankBadge, statTable, gamesTable, rpStrip, metric, rankRows, profileCard, filtered: ERV.filtered, isCobalt: ERV.isCobalt, hasRp: ERV.hasRp, toast: UI.toast };
 })();

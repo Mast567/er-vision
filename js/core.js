@@ -3,7 +3,7 @@
 const ERV = (() => {
   const { $, el, toast, killCharts } = UI;
   const VERSION = 'v0.5';
-  const S = { boot: null, games: [], mode: 3, season: 'all', seasonStats: null, lookup: null, lookupPending: null, loginError: '' };
+  const S = { boot: null, games: [], mode: 3, season: 'all', seasonStats: null, lookup: null, lookupPending: null, lookupRange: 30, loginError: '' };
 
   // ---- 화면 등록. def: { id, label, order, filters(모드·시즌 선택 표시), hidden(메뉴에 없음), public(로그인 불필요), render(v, param) }
   const registry = [];

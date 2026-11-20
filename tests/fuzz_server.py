@@ -204,10 +204,10 @@ class Run:
             if d['ok'] and d['data'].get('status') == 'done':
                 self.verify_games(d['data']['games'], ranked(nick_b, self.mock('/__truth')), '4단계 정밀 분석')
 
-            # 최근 기록 분석 (C): 앞 50줄 중 랭크
+            # 최근 기록 분석 (C): 앞 80줄 안의 최신 랭크 30판
             q = self.api(alice, 'lookup', nickname=nick_c)
             if q['ok']:
-                self.verify_games(q['data']['games'], [g for g in self.mock('/__truth')[nick_c][:50] if g['matchingMode'] == 3], '5단계 최근 기록', need_detail=False)
+                self.verify_games(q['data']['games'], [g for g in self.mock('/__truth')[nick_c][:80] if g['matchingMode'] == 3][:30], '5단계 최근 기록', need_detail=False)
             else:
                 self.check('429' in q['error'] or '바빠서' in q['error'], f'lookup 실패: {q}')
 

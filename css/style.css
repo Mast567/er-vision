@@ -3,21 +3,23 @@
    손익은 파랑(--pos)/주황(--neg) + 부호로 표시한다 (색만으로 구분하지 않기). */
 :root, [data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0B1016; --sf: #121A23; --sf2: #18222E; --ln: #223042;
+  --bg: #090D13; --sf: #131C26; --sf2: #1A2532; --ln: #27384C;
   --tx: #E7EEF6; --mu: #93A4B8;
   --ac: #45D6C8; --ac-ink: #04201D;
   --pos: #5FA8F0; --neg: #F07A5A; --warn: #F2B24C;
   --safe: #4CC38A; --danger: #F0563A;
   --shadow: 0 8px 28px rgba(0, 0, 0, .45);
+  --card-shadow: 0 1px 0 rgba(255, 255, 255, .03) inset, 0 4px 16px rgba(0, 0, 0, .28);
 }
 [data-theme="light"] {
   color-scheme: light;
-  --bg: #F4F6F8; --sf: #FFFFFF; --sf2: #EDF1F5; --ln: #D5DEE7;
+  --bg: #EEF1F5; --sf: #FFFFFF; --sf2: #EDF1F5; --ln: #CFD8E2;
   --tx: #101820; --mu: #56677A;
   --ac: #0B8A80; --ac-ink: #FFFFFF;
   --pos: #1F64B5; --neg: #C24A26; --warn: #A86A0A;
   --safe: #1E8A57; --danger: #C93A22;
   --shadow: 0 8px 28px rgba(16, 24, 32, .12);
+  --card-shadow: 0 1px 2px rgba(16, 24, 32, .06), 0 4px 14px rgba(16, 24, 32, .05);
 }
 :root {
   --font: "Noto Sans KR", system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
@@ -60,7 +62,22 @@ body.refreshing #refresh-btn { opacity: .7; pointer-events: none; }
 /* ---- 공통 조각 */
 .view { max-width: 1280px; margin: 0 auto; padding: 24px; }
 .page-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 4px 0 16px; }
-.card { background: var(--sf); border: 1px solid var(--ln); border-radius: var(--r); padding: 18px; min-width: 0; }
+.card { background: var(--sf); border: 1px solid var(--ln); border-radius: var(--r); padding: 18px; min-width: 0; box-shadow: var(--card-shadow); }
+/* 큰 묶음: 제목 줄(영문 꼬리표 + 제목 + 가로선) 아래에 카드들. 묶음 사이 36px, 묶음 안 16px */
+.group { margin-top: 36px; }
+.view > .page-head + .group, .stack > .group:first-child { margin-top: 8px; }
+.group > .grid { margin-bottom: 0; }
+.group > * + * { margin-top: var(--gap); }
+.group > .group-head + * { margin-top: 0; }
+.group-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.group-kicker { font: 700 11px var(--mono); letter-spacing: .14em; color: var(--ac); }
+.group-title { font-size: 17px; font-weight: 800; }
+.group-rule { flex: 1; height: 1px; background: var(--ln); min-width: 24px; }
+/* 범위 고르기 버튼 묶음 */
+.seg { display: inline-flex; background: var(--sf2); border: 1px solid var(--ln); border-radius: 8px; padding: 3px; gap: 2px; }
+.seg-btn { background: none; border: 0; border-radius: 6px; padding: 6px 12px; color: var(--mu); font-weight: 700; font-size: 13px; cursor: pointer; min-height: 32px; }
+.seg-btn:hover { color: var(--tx); }
+.seg-btn.on { background: var(--ac); color: var(--ac-ink); }
 .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .card-note { color: var(--mu); font-size: 12px; }
 .empty { color: var(--mu); padding: 20px; text-align: center; }
