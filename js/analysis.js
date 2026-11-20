@@ -148,9 +148,31 @@ const Analysis = (() => {
     if (streak >= 3) warns.push(`오늘 ${streak}판 연속 RP가 줄었다.`);
     return { games: T, summary: s, streak, warns };
   }
+  // API 시즌 이름 → 게임 안 이름. 게임 언어 파일 기준 Season10 = 시즌 1, Season21 = 시즌 12, Season1~9 = EA 시즌
+  function seasonLabel(name) {
+    const m = String(name || '').match(/^(Pre-)?Season(\d+)$/);
+    if (!m) return String(name || '');
+    const n = Number(m[2]), base = n >= 10 ? `시즌 ${n - 9}` : `EA 시즌 ${n}`;
+    return m[1] ? base + ' 프리 시즌' : base;
+  }
+  // RP(+순위)를 티어로. table은 서버가 주는 기준표: { divisions: [{tier, div, min}] (min 오름차순), top: [{tier, minRp, maxRank}] }
+  // 기준표 맨 아래 구간보다 낮으면 label 없이 below(가장 낮은 알려진 구간)를 돌려준다.
+  function tierOf(rp, rank, table) {
+    if (rp == null || !table) return null;
+    const top = (table.top || []).find(t => rp >= t.minRp && rank != null && rank <= t.maxRank);
+    if (top) return { tier: top.tier, label: top.tier, byRank: true };
+    const D = table.divisions || [];
+    let i = -1;
+    D.forEach((d, k) => { if (rp >= d.min) i = k; });
+    if (i < 0) return { tier: null, label: null, below: D[0] || null };
+    const d = D[i], nx = D[i + 1] || null;
+    const name = x => x.tier + (x.div ? ' ' + x.div : '');
+    return { tier: d.tier, label: name(d), points: rp - d.min, next: nx && name(nx), toNext: nx && nx.min - rp, progress: nx ? (rp - d.min) / (nx.min - d.min) : null };
+  }
+
   function seasonsIn(G) { return [...new Set(G.map(g => g.seasonId))].sort((a, b) => b - a); }
   const MODE_ORDER = { 3: 0, 2: 1, 6: 2 };
   function modesIn(G) { return [...new Set(G.map(g => g.mode))].sort((a, b) => (MODE_ORDER[a] ?? 9) - (MODE_ORDER[b] ?? 9)); }
 
-  return { setNames, areaName, MIN_N, MODE_NAME, modesIn, seasonsIn, enrich, summary, groupBy, byCharacter, byCharWeapon, byCore, byTactical, byStartArea, byRange, byWeek, byHour, byRank, byKiller, bySessionIndex, byTeamGap, byLobbyGap, breakEven, masteryCurve, recentVsPrev, survivalBuckets, session, mean, pct };
+  return { setNames, areaName, charName, tierOf, seasonLabel, MIN_N, MODE_NAME, modesIn, seasonsIn, enrich, summary, groupBy, byCharacter, byCharWeapon, byCore, byTactical, byStartArea, byRange, byWeek, byHour, byRank, byKiller, bySessionIndex, byTeamGap, byLobbyGap, breakEven, masteryCurve, recentVsPrev, survivalBuckets, session, mean, pct };
 })();

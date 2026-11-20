@@ -94,9 +94,39 @@
     return H.card('개인정보', [el('ul', { class: 'small' }, items.map(t => el('li', {}, t))), del]);
   }
 
+  // 티어 기준표 (관리자). 한 줄에 하나: "티어 단계 시작RP" (단계 없으면 -), 순위 티어는 "티어 TOP 순위 최소RP"
+  const tiersToText = t => !t ? '' : t.divisions.map(d => `${d.tier} ${d.div ?? '-'} ${d.min}`).concat((t.top || []).map(x => `${x.tier} TOP ${x.maxRank} ${x.minRp}`)).join('\n');
+  function textToTiers(text) {
+    const divisions = [], top = [];
+    text.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#')).forEach((l, i) => {
+      let m = l.match(/^(\S+)\s+TOP\s+(\d+)\s+(\d+)$/i);
+      if (m) { top.push({ tier: m[1], maxRank: Number(m[2]), minRp: Number(m[3]) }); return; }
+      m = l.match(/^(\S+)\s+(\d+|-)\s+(\d+)$/);
+      if (!m) throw new Error(`${i + 1}번째 줄을 읽지 못했습니다: ${l}`);
+      divisions.push({ tier: m[1], div: m[2] === '-' ? null : Number(m[2]), min: Number(m[3]) });
+    });
+    return { divisions, top };
+  }
+  function tiersCard() {
+    if (!(S.boot.me || {}).admin) return null;
+    const ta = el('textarea', { rows: 12, class: 'mono-input' });
+    ta.value = tiersToText(S.boot.tiers);
+    const save = el('button', { class: 'btn primary' }, '저장');
+    save.onclick = async () => {
+      save.disabled = true;
+      try { S.boot.tiers = await API.post('setTiers', { tiers: textToTiers(ta.value) }); ta.value = tiersToText(S.boot.tiers); toast('티어 기준표를 저장했습니다.'); }
+      catch (e) { handleErr(e, '저장 실패: '); }
+      save.disabled = false;
+    };
+    return H.card('티어 기준표 (관리자)', [
+      el('p', { class: 'mu small' }, '한 줄에 하나씩, 낮은 구간부터. "티어 단계 시작RP" (단계가 없으면 -). 순위로 정하는 티어는 "티어 TOP 순위 최소RP". 예: 다이아몬드 4 5000 / 미스릴 - 7600 / 이터니티 TOP 300 8300'),
+      ta, el('div', { class: 'row' }, [save])
+    ], { note: '모든 사용자 화면의 티어 표시에 쓰입니다' });
+  }
+
   function render(v) {
     v.appendChild(el('div', { class: 'page-head' }, [el('h1', {}, '내 계정')]));
-    v.appendChild(el('div', { class: 'stack narrow' }, [accountCard(), nicknameCard(), themeCard(), legacyCard(), backupCard(), privacyCard()]));
+    v.appendChild(el('div', { class: 'stack narrow' }, [accountCard(), nicknameCard(), themeCard(), tiersCard(), legacyCard(), backupCard(), privacyCard()]));
   }
 
   ERV.registerView({ id: 'account', label: '내 계정', order: 90, render });

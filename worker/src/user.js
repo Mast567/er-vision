@@ -70,6 +70,26 @@ export async function importData(ctx, u, kind, items, opts = {}) {
   return { kind, count: stmts.length };
 }
 
+// 티어 기준표 저장 (관리자). 형식이 틀리면 저장하지 않는다.
+// { divisions: [{ tier, div(1~4|null), min(RP) }...] (min 오름차순), top: [{ tier, minRp, maxRank }...] }
+export async function saveTiers(ctx, value) {
+  let t = value;
+  if (typeof value === 'string') { try { t = JSON.parse(value); } catch { throw new Error('티어 기준표 형식(JSON)이 올바르지 않습니다.'); } }
+  const okInt = (x, lo) => Number.isInteger(x) && x >= lo;
+  const divs = t && Array.isArray(t.divisions) ? t.divisions : null;
+  if (!divs || !divs.length || divs.length > 60) throw new Error('구간(divisions)이 없거나 너무 많습니다.');
+  divs.forEach((d, i) => {
+    if (!d || typeof d.tier !== 'string' || !d.tier.trim() || d.tier.length > 20) throw new Error(`${i + 1}번째 구간의 티어 이름이 올바르지 않습니다.`);
+    if (!(d.div === null || okInt(d.div, 1))) throw new Error(`${i + 1}번째 구간의 단계가 올바르지 않습니다.`);
+    if (!okInt(d.min, 0) || (i && d.min <= divs[i - 1].min)) throw new Error(`${i + 1}번째 구간의 시작 RP는 앞 구간보다 커야 합니다.`);
+  });
+  const top = Array.isArray(t.top) ? t.top : [];
+  top.forEach((x, i) => { if (!x || typeof x.tier !== 'string' || !okInt(x.minRp, 0) || !okInt(x.maxRank, 1)) throw new Error(`순위 티어 ${i + 1}번째가 올바르지 않습니다.`); });
+  const clean = { divisions: divs.map(d => ({ tier: d.tier.trim(), div: d.div, min: d.min })), top: top.map(x => ({ tier: x.tier.trim(), minRp: x.minRp, maxRank: x.maxRank })).sort((a, b) => a.maxRank - b.maxRank) };
+  await settingStmt(ctx, 'tiers', JSON.stringify(clean)).run();
+  return clean;
+}
+
 export async function bootstrap(ctx, u) {
   ctx.user = u;
   const s = await settings(ctx);
@@ -82,5 +102,6 @@ export async function bootstrap(ctx, u) {
   const me = { name: u.discord_name || '', admin: !!u.is_admin, legacyAvailable: !s.legacyClaimedBy && !!ctx.env.SITE_TOKEN, limits: LIMITS };
   // 한글 이름표(GitHub Actions가 넣음). 약관상 공개 저장소가 아니라 로그인한 사용자에게만 준다.
   const names = s.names && s.names.startsWith('{') ? s.names : 'null';
-  return okRaw('{"owner":' + JSON.stringify(owner) + ',"me":' + JSON.stringify(me) + ',"meta":' + meta + ',"names":' + names + ',"seasons":' + JSON.stringify(seasonList) + ',"games":' + games + extra + '}');
+  const tiers = s.tiers && s.tiers.startsWith('{') ? s.tiers : 'null';
+  return okRaw('{"owner":' + JSON.stringify(owner) + ',"me":' + JSON.stringify(me) + ',"meta":' + meta + ',"names":' + names + ',"tiers":' + tiers + ',"seasons":' + JSON.stringify(seasonList) + ',"games":' + games + extra + '}');
 }

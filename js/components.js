@@ -78,5 +78,41 @@
     ])));
   }
 
-  ERV.helpers = { el, esc, fmtP, fmtN, fmtS, signed, tile, finding, card, empty, sample, rankBadge, statTable, gamesTable, rpStrip, metric, rankRows, filtered: ERV.filtered, isCobalt: ERV.isCobalt, hasRp: ERV.hasRp, toast: UI.toast };
+  // ---- 프로필 (닉네임 조회 결과와 홈 맨 위). stats: 서버 seasonStats 배열(최신 시즌부터)
+  // 티어 이름은 서버의 티어 기준표로 붙인다. 공식 문장(엠블럼) 그림은 쓰지 않고 이름과 색만 쓴다.
+  const TIER_CLASS = { 아이언: 'iron', 브론즈: 'bronze', 실버: 'silver', 골드: 'gold', 플래티넘: 'platinum', 다이아몬드: 'diamond', 메테오라이트: 'meteorite', 미스릴: 'mithril', 데미갓: 'demigod', 이터니티: 'eternity' };
+  function tierBadge(t) {
+    const cls = t && t.tier ? TIER_CLASS[t.tier] || '' : 'unknown';
+    return el('div', { class: 'tier-badge ' + cls }, t && t.tier ? t.tier.slice(0, 1) : '?');
+  }
+  function profileCard(nickname, stats) {
+    // 이번 시즌 기록이 없으면(시즌 초 등) 가장 최근 시즌을 보여 준다
+    const curId = ((S.boot.seasons || []).find(s => s.current) || {}).id;
+    const cur = (stats || []).find(s => s.seasonId === curId) || (stats || [])[0];
+    const old = cur && cur.seasonId !== curId;
+    const past = (stats || []).filter(s => s !== cur).slice(0, 3);
+    const label = s => Analysis.seasonLabel(s.seasonName);
+    const t = cur ? Analysis.tierOf(cur.rp, cur.rank, S.boot.tiers) : null;
+    const tierText = !cur ? '랭크 기록 없음' : t && t.label ? t.label : t && t.below ? `${t.below.tier} ${t.below.div || ''} 미만`.trim() : '티어 기준표 없음';
+    const head = el('div', { class: 'profile-main' }, [
+      tierBadge(t),
+      el('div', { class: 'profile-id' }, [
+        el('div', { class: 'profile-nick' }, nickname),
+        el('div', { class: 'profile-tier' }, [el('b', {}, tierText), cur ? el('span', { class: 'num' }, `${UI.fmtI(cur.rp)} RP`) : null, t && t.tier === '미스릴' ? el('span', { class: 'mu num' }, `+${UI.fmtI(t.points)}`) : null]),
+        t && t.next ? el('div', { class: 'profile-next' }, [el('div', { class: 'progress' }, el('div', { style: { width: Math.round(t.progress * 100) + '%' } })), el('span', { class: 'mu small' }, `${t.next}까지 ${UI.fmtI(t.toNext)} RP`)]) : null,
+        cur ? el('div', { class: 'mu small' }, `${label(cur)}${old ? ' 최종 (이번 시즌 기록 없음)' : ''}${cur.rank ? ` · ${UI.fmtI(cur.rank)}위` : ''}${cur.rankPercent != null ? ` · 상위 ${(cur.rankPercent * 100).toFixed(1)}%` : ''}${t && t.byRank ? ' · 순위 티어는 서버별 산정과 다를 수 있음' : ''}`) : null
+      ])
+    ]);
+    const nums = cur ? el('div', { class: 'profile-stats' }, [
+      ['판수', UI.fmtI(cur.games)], ['1등', cur.games ? fmtP(cur.wins / cur.games) : '-'], ['TOP3', fmtP(cur.top3)], ['평균 등수', fmtN(cur.avgRank)], ['평균 킬', fmtN(cur.avgKills)]
+    ].map(([k, v]) => el('div', {}, [el('div', { class: 'mu small' }, k), el('div', { class: 'num strong' }, v)]))) : null;
+    const most = cur && (cur.characterStats || []).length ? el('div', { class: 'profile-most' }, [el('div', { class: 'mu small' }, '많이 한 캐릭터')].concat(
+      cur.characterStats.slice().sort((a, b) => b.games - a.games).slice(0, 3).map(c => el('div', { class: 'most-row' }, [
+        el('span', {}, Analysis.charName(c.characterCode, S.boot.meta)), el('span', { class: 'mu num' }, `${c.games}판 · ${fmtN(c.avgRank)}등 · TOP3 ${c.games ? fmtP(c.top3 / c.games) : '-'}`)
+      ])))) : null;
+    const prev = past.length ? el('div', { class: 'profile-past' }, past.map(s => el('span', { class: 'chip-past' }, `${label(s)} ${UI.fmtI(s.rp)} RP`))) : null;
+    return el('section', { class: 'card profile' }, [head, nums, most, prev]);
+  }
+
+  ERV.helpers = { el, esc, fmtP, fmtN, fmtS, signed, tile, finding, card, empty, sample, rankBadge, statTable, gamesTable, rpStrip, metric, rankRows, profileCard, filtered: ERV.filtered, isCobalt: ERV.isCobalt, hasRp: ERV.hasRp, toast: UI.toast };
 })();

@@ -18,11 +18,15 @@ const ERV = (() => {
     registry.filter(r => !r.hidden).forEach(r => nav.appendChild(el('a', { href: '#/' + r.id, 'data-route': r.id }, r.label)));
   }
   const ALIAS = { dashboard: 'home', analysis: 'character', settings: 'account' };   // v0.31 주소
-  function route() {
-    killCharts();
+  function parseHash() {
     const [rawName, param = ''] = (location.hash.replace(/^#\/?/, '') || 'home').split('?')[0].split('/');
     const name = ALIAS[rawName] || rawName;
-    const def = registry.find(r => r.id === name) || registry.find(r => r.id === 'home');
+    return { def: registry.find(r => r.id === name) || registry.find(r => r.id === 'home'), param };
+  }
+  const currentView = () => parseHash().def.id;
+  function route() {
+    killCharts();
+    const { def, param } = parseHash();
     document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('active', a.dataset.route === def.id));
     const v = $('#view'); v.innerHTML = '';
     const loggedIn = !!S.boot;
@@ -37,7 +41,7 @@ const ERV = (() => {
   // ---- 모드·시즌
   const isCobalt = () => S.mode === 6;
   const hasRp = () => S.mode === 3;
-  function seasonName(id) { const s = ((S.boot && S.boot.seasons) || []).find(x => x.id === id); return s ? s.name : '시즌 ' + id; }
+  function seasonName(id) { const s = ((S.boot && S.boot.seasons) || []).find(x => x.id === id); return s ? Analysis.seasonLabel(s.name) : '시즌 ID ' + id; }
   function filtered(games) {
     const L = S.mode === 'all' ? games : games.filter(g => g.mode === S.mode);
     return S.season === 'all' ? L : L.filter(g => String(g.seasonId) === String(S.season));
@@ -72,7 +76,10 @@ const ERV = (() => {
     S.games = Analysis.enrich(b.games || [], b.meta, b.seasons);
     $('#owner-chip').textContent = b.owner.nickname || b.me.name || '닉네임 미설정';
     renderFilters();
-    if (b.owner.nickname && !S.seasonStats) API.get('seasonStats').then(st => { S.seasonStats = st; }).catch(() => { S.seasonStats = []; });
+    // 시즌 기록(티어)은 게임 API를 거쳐 느릴 수 있어 따로 받고, 받으면 홈을 다시 그린다
+    if (b.owner.nickname && !S.seasonStats) {
+      API.get('seasonStats').catch(() => []).then(st => { S.seasonStats = st; if (currentView() === 'home') route(); });
+    }
   }
   function handleErr(e, prefix) {
     if (e && e.needLogin) { S.boot = null; route(); toast('다시 로그인하세요.', true); return; }
@@ -141,9 +148,7 @@ const ERV = (() => {
   // 모든 화면 파일이 등록을 마친 뒤 시작한다
   window.addEventListener('DOMContentLoaded', async () => {
     readHashParams();
-    const name = (location.hash.replace(/^#\/?/, '') || '').split(/[/?]/)[0];
-    const def = registry.find(r => r.id === name);
-    if (API.store.url && API.store.session && !(def && def.public)) {
+    if (API.store.url && API.store.session && !parseHash().def.public) {
       try { await loadBoot(); } catch (e) { if (!e.needLogin) toast('연결 실패: ' + e.message, true); }
     }
     route();

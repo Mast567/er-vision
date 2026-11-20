@@ -168,6 +168,28 @@ dl.info dd { margin: 0; overflow-wrap: anywhere; }
 .field { margin-top: 12px; }
 .nick-input { max-width: 240px; }
 
+/* 프로필 (조회 결과·홈 맨 위). 티어는 이름 + 색, 공식 엠블럼 그림은 쓰지 않는다 */
+.profile { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 14px 24px; margin-bottom: var(--gap); }
+.profile-main { display: flex; gap: 16px; align-items: center; }
+.tier-badge { --tc: var(--mu); flex: none; width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; font-size: 24px; font-weight: 900;
+  color: var(--tc); background: color-mix(in srgb, var(--tc) 16%, var(--sf2)); border: 3px solid var(--tc); }
+.tier-badge.iron { --tc: #8A8F98; } .tier-badge.bronze { --tc: #B87A4B; } .tier-badge.silver { --tc: #A9B6C4; } .tier-badge.gold { --tc: #E0B24A; }
+.tier-badge.platinum { --tc: #3FBFA8; } .tier-badge.diamond { --tc: #5FA8F0; } .tier-badge.meteorite { --tc: #A97CF0; } .tier-badge.mithril { --tc: #E46FA8; }
+.tier-badge.demigod { --tc: #F07A5A; } .tier-badge.eternity { --tc: #F2C14E; }
+.profile-id { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.profile-nick { font-size: 22px; font-weight: 900; overflow-wrap: anywhere; }
+.profile-tier { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; font-size: 15px; }
+.profile-next { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.profile-next .progress { width: 180px; margin: 0; }
+.profile-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; align-self: center; }
+.profile-stats > div { background: var(--sf2); border-radius: 8px; padding: 8px 10px; }
+.strong { font-weight: 700; font-size: 16px; }
+.profile-most { display: flex; flex-direction: column; gap: 4px; max-width: 460px; }
+.most-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.profile-past { display: flex; gap: 6px; flex-wrap: wrap; align-content: start; }
+.chip-past { font-size: 12px; color: var(--mu); border: 1px solid var(--ln); border-radius: 999px; padding: 2px 10px; }
+.mono-input { width: 100%; font-family: var(--mono); font-size: 13px; }
+
 /* 로그인 화면 */
 .gate { max-width: 520px; margin: 56px auto; display: flex; flex-direction: column; gap: 14px; background: var(--sf); padding: 28px; border-radius: 14px; border: 1px solid var(--ln); }
 .help { color: var(--mu); font-size: 13px; }
@@ -180,6 +202,7 @@ dl.info dd { margin: 0; overflow-wrap: anywhere; }
 /* ---- 좁은 화면 (휴대폰) */
 @media (max-width: 1100px) {
   .grid.two, .grid.side, .grid.map-layout { grid-template-columns: 1fr; }
+  .profile { grid-template-columns: 1fr; }
   .chip { display: none; }
 }
 @media (max-width: 760px) {
@@ -193,5 +216,6 @@ dl.info dd { margin: 0; overflow-wrap: anywhere; }
   .card { padding: 14px; }
   .grid.kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .bar-row { grid-template-columns: 36px 1fr 96px; }
+  .profile-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .site-foot { padding: 12px 16px 0; }
 }

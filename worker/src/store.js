@@ -91,7 +91,8 @@ export async function seasonStats(ctx, uid, limit) {
   const key = 'sst:' + uid + ':' + limit;
   const cached = await kvGet(ctx, key);
   if (cached) return JSON.parse(cached);
-  const list = (await seasons(ctx)).filter(s => s.id > 0).sort((a, b) => b.id - a.id).slice(0, limit);
+  // 프리 시즌(일주일 남짓)은 빼고 정규 시즌만 센다. 빼지 않으면 시즌 초에 개수 한도를 프리 시즌이 차지한다.
+  const list = (await seasons(ctx)).filter(s => s.id > 0 && !/^Pre-/i.test(String(s.name))).sort((a, b) => b.id - a.id).slice(0, limit);
   const out = [];
   for (const s of list) {
     try {

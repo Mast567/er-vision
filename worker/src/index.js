@@ -6,7 +6,7 @@ import { CORS, sendRaw, okObj, fail, toInt } from './util.js';
 import { DATA_V } from './er-api.js';
 import { makeCtx, withLock, settings, seasonStats, lookupUid, refreshMeta } from './store.js';
 import { ownerUid, ownerRefresh, pendingOwner, workJob, deepLookup, jobStatus, quickLookup } from './collect.js';
-import { quota, claimLegacy, deleteAccount, importData, bootstrap } from './user.js';
+import { quota, claimLegacy, deleteAccount, importData, bootstrap, saveTiers } from './user.js';
 import './features/companions.js';
 import './features/notes.js';
 
@@ -52,6 +52,7 @@ async function handle(request, env) {
     case 'logout': await ctx.db.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(u.tokenHash).run(); return okObj({ loggedOut: true });
     case 'deleteAccount': return okObj(await deleteAccount(ctx, u));
     case 'refreshMeta': admin(); return okObj(await refreshMeta(ctx));
+    case 'setTiers': admin(); return okObj(await saveTiers(ctx, p.tiers));
     default:
       if (ext.actions[action]) return okObj(await ext.actions[action](ctx, p));
       return fail('알 수 없는 action: ' + action);

@@ -8,7 +8,7 @@
   function seasonTable(st) {
     if (!st || !st.length) return null;
     const head = ['시즌', 'RP', '순위', '판수', '평균 등수', 'TOP3'];
-    const rows = st.map(s => [s.seasonName, fmtI(s.rp), s.rank ? `${fmtI(s.rank)} / ${fmtI(s.rankSize)}` : '-', String(s.games ?? '-'), fmtN(s.avgRank), fmtP(s.top3)]);
+    const rows = st.map(s => [Analysis.seasonLabel(s.seasonName), fmtI(s.rp), s.rank ? `${fmtI(s.rank)} / ${fmtI(s.rankSize)}` : '-', String(s.games ?? '-'), fmtN(s.avgRank), fmtP(s.top3)]);
     return H.card('시즌 기록', [el('div', { class: 'tbl-wrap' }, el('table', { class: 'tbl' }, [el('thead', {}, el('tr', {}, head.map((h, i) => el('th', { class: i ? 'num' : '' }, h)))), el('tbody', {}, rows.map(r => el('tr', {}, r.map((c, i) => el('td', { class: i ? 'num' : '' }, c)))))]))], { note: '공식 시즌 통계' });
   }
   function result(data) {
@@ -16,6 +16,7 @@
     const s = Analysis.summary(G);
     const when = data.mode === 'deep' ? `마지막 수집 ${data.lastFetch ? new Date(data.lastFetch).toLocaleString('ko-KR') : '-'}` : (data.cached ? '10분 안에 조회한 결과' : '방금 조회');
     const out = [el('div', { class: 'page-head' }, [el('h2', {}, `${data.nickname} · ${data.mode === 'deep' ? '정밀 분석' : '최근 기록'} ${G.length}판`), el('span', { class: 'mu' }, when)])];
+    out.push(H.profileCard(data.nickname, data.seasonStats));
     if (!G.length) return out.concat(H.card(null, [H.empty('최근 랭크 경기가 없습니다.')]));
     out.push(el('div', { class: 'grid kpi' }, [H.tile('판수', String(s.n)), H.tile('판당 RP', UI.signed(s.avgRp)), H.tile('평균 등수', fmtN(s.avgRank)), H.tile('TOP3', fmtP(s.top3Rate)), H.tile('10분 안 탈락', fmtP(s.earlyRate))]));
     const st = seasonTable(data.seasonStats); if (st) out.push(st);
