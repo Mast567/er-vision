@@ -171,11 +171,8 @@ dl.info dd { margin: 0; overflow-wrap: anywhere; }
 /* 프로필 (조회 결과·홈 맨 위). 티어는 이름 + 색, 공식 엠블럼 그림은 쓰지 않는다 */
 .profile { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 14px 24px; margin-bottom: var(--gap); }
 .profile-main { display: flex; gap: 16px; align-items: center; }
-.tier-badge { --tc: var(--mu); flex: none; width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; font-size: 24px; font-weight: 900;
-  color: var(--tc); background: color-mix(in srgb, var(--tc) 16%, var(--sf2)); border: 3px solid var(--tc); }
-.tier-badge.iron { --tc: #8A8F98; } .tier-badge.bronze { --tc: #B87A4B; } .tier-badge.silver { --tc: #A9B6C4; } .tier-badge.gold { --tc: #E0B24A; }
-.tier-badge.platinum { --tc: #3FBFA8; } .tier-badge.diamond { --tc: #5FA8F0; } .tier-badge.meteorite { --tc: #A97CF0; } .tier-badge.mithril { --tc: #E46FA8; }
-.tier-badge.demigod { --tc: #F07A5A; } .tier-badge.eternity { --tc: #F2C14E; }
+.tier-icon { flex: none; width: 72px; height: 72px; }
+.tier-badge { flex: none; width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; font-size: 24px; font-weight: 900; color: var(--mu); background: var(--sf2); border: 3px dashed var(--ln); }
 .profile-id { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .profile-nick { font-size: 22px; font-weight: 900; overflow-wrap: anywhere; }
 .profile-tier { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; font-size: 15px; }

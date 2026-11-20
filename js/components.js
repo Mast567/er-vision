@@ -79,11 +79,12 @@
   }
 
   // ---- 프로필 (닉네임 조회 결과와 홈 맨 위). stats: 서버 seasonStats 배열(최신 시즌부터)
-  // 티어 이름은 서버의 티어 기준표로 붙인다. 공식 문장(엠블럼) 그림은 쓰지 않고 이름과 색만 쓴다.
-  const TIER_CLASS = { 아이언: 'iron', 브론즈: 'bronze', 실버: 'silver', 골드: 'gold', 플래티넘: 'platinum', 다이아몬드: 'diamond', 메테오라이트: 'meteorite', 미스릴: 'mithril', 데미갓: 'demigod', 이터니티: 'eternity' };
+  // 티어 이름은 서버의 티어 기준표로 붙인다. 아이콘(img/tiers/*.svg)은 공식 엠블럼이 아닌 자체 그림이다.
+  const TIER_ICON = { 아이언: 'iron', 브론즈: 'bronze', 실버: 'silver', 골드: 'gold', 플래티넘: 'platinum', 다이아몬드: 'diamond', 메테오라이트: 'meteorite', 미스릴: 'mithril', 데미갓: 'demigod', 이터니티: 'eternity' };
   function tierBadge(t) {
-    const cls = t && t.tier ? TIER_CLASS[t.tier] || '' : 'unknown';
-    return el('div', { class: 'tier-badge ' + cls }, t && t.tier ? t.tier.slice(0, 1) : '?');
+    const icon = t && t.tier && TIER_ICON[t.tier];
+    if (icon) return el('img', { class: 'tier-icon', src: `img/tiers/${icon}.svg`, alt: t.tier, width: 72, height: 72 });
+    return el('div', { class: 'tier-badge' }, '?');
   }
   function profileCard(nickname, stats) {
     // 이번 시즌 기록이 없으면(시즌 초 등) 가장 최근 시즌을 보여 준다
