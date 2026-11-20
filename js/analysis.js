@@ -19,15 +19,15 @@ const Analysis = (() => {
     const hit = (seasons || []).find(s => { const a = new Date(String(s.start).replace(' ', 'T')).getTime(), b = new Date(String(s.end).replace(' ', 'T')).getTime(); return t >= a && t < b; });
     return hit ? hit.id : 0;
   }
+  const areaName = (code, meta) => { if (code == null) return ''; const a = ((meta && meta.areas) || {})[String(code)] || {}; return NAMES.areas[code] || a.ko || a.name || String(code); };
   const charName = (code, meta) => NAMES.characters[code] || ((meta && meta.characters[code]) || {}).ko || ((meta && meta.characters[code]) || {}).name || String(code);
 
   function enrich(games, meta, seasons) {
-    const chars = (meta && meta.characters) || {}, areas = (meta && meta.areas) || {};
+    const chars = (meta && meta.characters) || {};
     return games.map(g => {
       const d = new Date(String(g.startDtm).replace(' ', 'T'));
       const mode = g.mode == null ? 3 : Number(g.mode);
       const seasonId = (g.seasonId && g.seasonId > 0) ? g.seasonId : seasonByDate(d, seasons);
-      const sa = areas[String(g.startArea)] || {};
       const killers = Object.entries(g.killers || {}).map(([code, n]) => ({ name: charName(code, meta), n: Number(n) || 0 })).sort((a, b) => b.n - a.n);
       const rpChange = Number(g.rpChange) || 0;
       return Object.assign({}, g, {
@@ -37,7 +37,7 @@ const Analysis = (() => {
         coreName: g.core != null ? (NAMES.traits[g.core] || String(g.core)) : '',
         tacticalName: g.tactical != null ? (NAMES.tactical[g.tactical] || String(g.tactical)) : '',
         range: (chars[String(g.characterNum)] || {}).range || '',
-        startAreaName: NAMES.areas[g.startArea] || sa.ko || sa.name || (g.startArea == null ? '' : String(g.startArea)),
+        startAreaName: areaName(g.startArea, meta),
         killers, killerText: killers.slice(0, 2).map(k => k.name).join(', '),
         date: d, day: String(g.startDtm).slice(0, 10), hour: d.getHours(), week: isoWeek(d),
         win: g.gameRank === 1 ? 1 : 0, top3: g.gameRank >= 1 && g.gameRank <= 3 ? 1 : 0,
@@ -152,5 +152,5 @@ const Analysis = (() => {
   const MODE_ORDER = { 3: 0, 2: 1, 6: 2 };
   function modesIn(G) { return [...new Set(G.map(g => g.mode))].sort((a, b) => (MODE_ORDER[a] ?? 9) - (MODE_ORDER[b] ?? 9)); }
 
-  return { setNames, MIN_N, MODE_NAME, modesIn, seasonsIn, enrich, summary, groupBy, byCharacter, byCharWeapon, byCore, byTactical, byStartArea, byRange, byWeek, byHour, byRank, byKiller, bySessionIndex, byTeamGap, byLobbyGap, breakEven, masteryCurve, recentVsPrev, survivalBuckets, session, mean, pct };
+  return { setNames, areaName, MIN_N, MODE_NAME, modesIn, seasonsIn, enrich, summary, groupBy, byCharacter, byCharWeapon, byCore, byTactical, byStartArea, byRange, byWeek, byHour, byRank, byKiller, bySessionIndex, byTeamGap, byLobbyGap, breakEven, masteryCurve, recentVsPrev, survivalBuckets, session, mean, pct };
 })();

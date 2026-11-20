@@ -4,17 +4,25 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ER Vision</title>
-<meta name="description" content="이터널 리턴 랭크 복기 노트. 경기 기록 분석, 리플레이 복기, 코칭 리포트.">
+<meta name="description" content="이터널 리턴 랭크 점수(RP)를 올리기 위한 개인 기록 분석 도구.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
 <link rel="stylesheet" href="css/style.css">
 <script src="js/vendor/chart.umd.js"></script>
 </head>
 <body>
 <header class="topbar">
-  <div class="brand"><span class="logo">ER</span><span class="brand-name">Vision</span><span class="brand-sub">랭크 복기 노트</span></div>
+  <a class="brand" href="#/home"><span class="brand-name">ER VISION</span><span class="brand-sub">FIELD NOTES</span></a>
   <nav class="nav" id="nav"></nav>
+  <div class="filters-bar" id="filters" hidden>
+    <select id="mode-pick" aria-label="모드"></select>
+    <select id="season-pick" aria-label="시즌"></select>
+  </div>
   <div class="topbar-right">
-    <label class="season-pick" id="season-pick-wrap"><span class="muted">모드</span><select id="mode-pick"></select><span class="muted" style="margin-left:8px">시즌</span><select id="season-pick"></select></label>
     <span id="owner-chip" class="chip"></span>
+    <button class="icon-btn" id="theme-btn" title="밝게/어둡게" aria-label="밝게/어둡게 바꾸기">◐</button>
+    <button class="btn primary" id="refresh-btn">지금 갱신</button>
   </div>
 </header>
 
@@ -29,11 +37,11 @@
 <template id="tpl-gate">
   <section class="gate">
     <h1>ER Vision</h1>
-    <p class="muted">이터널 리턴 복기 노트. 내 경기 기록을 모아 분석하고, 판마다 복기노트를 남깁니다. 복기노트는 나만 볼 수 있습니다.</p>
+    <p class="mu">내 랭크 기록을 모아 RP를 올리는 데 필요한 것만 보여 줍니다. 내 기록은 나만 볼 수 있습니다.</p>
     <label id="gate-url-wrap">서버 주소<input id="gate-url" type="url" placeholder="https://er-vision.….workers.dev"></label>
-    <div class="row"><button class="btn primary" id="gate-go">디스코드로 로그인</button><span id="gate-msg" class="muted"></span></div>
+    <div class="row"><button class="btn primary" id="gate-go">디스코드로 로그인</button><span id="gate-msg" class="mu"></span></div>
     <details class="help"><summary>무엇을 가져가나요?</summary>
-      <p>디스코드 고유번호와 표시 이름만 받습니다. 이메일, 친구 목록, 서버 목록은 받지 않습니다. 계정은 설정에서 언제든 삭제할 수 있습니다.</p>
+      <p>디스코드 고유번호와 표시 이름만 받습니다. 이메일, 친구 목록, 서버 목록은 받지 않습니다. 계정은 내 계정 화면에서 언제든 삭제할 수 있습니다.</p>
     </details>
   </section>
 </template>
@@ -41,7 +49,17 @@
 <script src="js/config.js"></script>
 <script src="js/api.js"></script>
 <script src="js/analysis.js"></script>
-<script src="js/app.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/core.js"></script>
+<script src="js/components.js"></script>
+<!-- 화면: 한 줄 = 화면 하나 -->
+<script src="js/views/home.js"></script>
+<script src="js/views/character.js"></script>
+<script src="js/views/strategy.js"></script>
+<script src="js/views/lookup.js"></script>
+<script src="js/views/records.js"></script>
+<script src="js/views/account.js"></script>
+<script src="js/views/shared.js"></script>
 <!-- 기능 파일: 한 줄 = 기능 하나. 빼고 싶으면 그 줄만 지운다 -->
 <script src="js/features/companions.js"></script>
 </body>

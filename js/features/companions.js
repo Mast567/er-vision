@@ -95,7 +95,7 @@
   function render(v) {
     const G = filtered(S.games);
     const mm = mateMap();
-    v.appendChild(el('div', { class: 'section-head' }, [el('h1', {}, '같이 한 사람들'), el('span', { class: 'muted small' }, '본인에게만 보이는 화면. 사람을 평가하지 않고, 이 멤버와 할 때 잘 되는 것만 찾는다')]));
+    v.appendChild(el('div', { class: 'page-head' }, [el('h1', {}, '같이 한 사람들'), el('span', { class: 'mu small' }, '본인에게만 보이는 화면. 사람을 평가하지 않고, 이 멤버와 할 때 잘 되는 것만 찾는다')]));
     if (!(S.boot.teammates || []).length) { v.appendChild(el('div', { class: 'card empty' }, '팀원 기록이 아직 없습니다. 새 경기가 들어오면 쌓입니다.')); return; }
     const { trios, people } = buildGroups(G, mm);
     assignTitles(trios); assignTitles(people);
@@ -107,25 +107,25 @@
 
     const qualTrios = trios.filter(t => t.n >= LIST_MIN), qualPeople = people.filter(p => p.n >= LIST_MIN);
     v.appendChild(el('div', { class: 'grid kpi' }, [tile('팀원 기록이 있는 판', String(withGames)), tile('같이 2판 이상 한 사람', String(qualPeople.length)), tile(isCobalt() ? '2판 이상 뭉친 팀' : '2판 이상 뭉친 트리오', String(qualTrios.length)), tile('칭호 기준', `${MIN_GAMES}판 이상`)]));
-    v.appendChild(el('p', { class: 'small muted', style: 'margin:8px 0 0' }, '큐 인원 (API의 preMade 값 기준): ' + pmText));
+    v.appendChild(el('p', { class: 'mu small', style: 'margin:8px 0 0' }, '큐 인원 (API의 preMade 값 기준): ' + pmText));
     if (!qualPeople.length) {
       v.appendChild(el('div', { class: 'card empty', html: `아직 같은 사람과 ${LIST_MIN}판 이상 함께한 기록이 없습니다. 지금까지는 거의 솔로 큐로 돌린 셈이라, 친구와 함께하는 랭크가 쌓이면 여기에 나타납니다.` }));
       return;
     }
-    const layout = el('div', { class: 'notes-layout' }); const left = el('div'), right = el('div'); layout.append(left, right); v.appendChild(layout);
+    const layout = el('div', { class: 'grid side' }); const left = el('div'), right = el('div'); layout.append(left, right); v.appendChild(layout);
     let selected = null;
     function list() {
       left.innerHTML = '';
       const mkTable = (title, rows, type) => {
-        const wrap = el('div', { class: 'card pad-0 tbl-wrap', style: 'margin-bottom:12px' });
+        const wrap = el('div', { class: 'tbl-wrap', style: 'margin-bottom:12px' });
         const t = el('table', { class: 'tbl' }); t.innerHTML = `<thead><tr><th>${title}</th><th class="num">판수</th><th>칭호</th></tr></thead>`;
         const tb = el('tbody');
-        rows.forEach(r => { const tr = el('tr', { class: 'clickable' + (selected === r ? ' selected' : '') }); tr.innerHTML = `<td>${esc(r.key)}</td><td class="num">${r.n}</td><td>${r.n >= MIN_GAMES ? (r.titles || []).map(x => `<span class="tag">${esc(x.name)}</span>`).join('') : `<span class="muted small">${MIN_GAMES - r.n}판 더</span>`}</td>`; tr.onclick = () => { selected = r; list(); detail(); }; tb.appendChild(tr); });
+        rows.forEach(r => { const tr = el('tr', { class: 'clickable' + (selected === r ? ' selected' : '') }); tr.innerHTML = `<td>${esc(r.key)}</td><td class="num">${r.n}</td><td>${r.n >= MIN_GAMES ? (r.titles || []).map(x => `<span class="tag">${esc(x.name)}</span>`).join('') : `<span class="mu small">${MIN_GAMES - r.n}판 더</span>`}</td>`; tr.onclick = () => { selected = r; list(); detail(); }; tb.appendChild(tr); });
         t.appendChild(tb); wrap.appendChild(t); return wrap;
       };
       if (qualTrios.length) left.appendChild(mkTable(isCobalt() ? '팀 (넷이 함께)' : '트리오 (셋이 함께)', qualTrios));
       left.appendChild(mkTable('사람 (이 사람과 함께, 제3자 무관)', qualPeople));
-      left.appendChild(el('p', { class: 'small muted' }, `솔로 큐 또는 팀원 기록이 불완전한 판: ${Math.max(solo, 0)}판`));
+      left.appendChild(el('p', { class: 'mu small' }, `솔로 큐 또는 팀원 기록이 불완전한 판: ${Math.max(solo, 0)}판`));
     }
     function detail() {
       right.innerHTML = '';
@@ -133,8 +133,8 @@
       const g = selected, st = g.stats;
       right.appendChild(el('div', { class: 'card' }, [
         el('h2', {}, g.key + (g.type === 'trio' ? (isCobalt() ? ' (팀)' : ' (트리오)') : '')),
-        g.n >= MIN_GAMES ? el('div', { class: 'row', style: 'margin:6px 0 10px' }, (g.titles || []).map(t => el('div', { class: 'card', style: 'padding:10px 14px;background:var(--surface-2)' }, [el('div', { style: 'font-weight:700;font-size:16px' }, (t.first ? '🏅 ' : '') + t.name), el('div', { class: 'small muted' }, t.desc + (t.first ? '' : ' (내 조합들 중 상위권)'))]))) : el('p', { class: 'muted' }, `아직 ${g.n}판. 칭호는 ${MIN_GAMES}판부터 생깁니다. 같이 ${MIN_GAMES - g.n}판 더 해봐야 압니다.`),
-        el('div', { class: 'info-grid', html: highlights(g.games).map(([k, val]) => `<div><div class="k">${k}</div><div>${esc(val)}</div></div>`).join('') })
+        g.n >= MIN_GAMES ? el('div', { class: 'row', style: 'margin:6px 0 10px' }, (g.titles || []).map(t => el('div', { class: 'card', style: 'padding:10px 14px;background:var(--sf2)' }, [el('div', { style: 'font-weight:700;font-size:16px' }, (t.first ? '🏅 ' : '') + t.name), el('div', { class: 'mu small' }, t.desc + (t.first ? '' : ' (내 조합들 중 상위권)'))]))) : el('p', { class: 'mu' }, `아직 ${g.n}판. 칭호는 ${MIN_GAMES}판부터 생깁니다. 같이 ${MIN_GAMES - g.n}판 더 해봐야 압니다.`),
+        el('dl', { class: 'info' }, highlights(g.games).flatMap(([k, val]) => [el('dt', {}, k), el('dd', {}, String(val))]))
       ]));
       const byRange = Analysis.byRange(g.games), byChar = Analysis.byCharacter(g.games);
       const cmp = isCobalt() ? ((a, b) => (b.winRate || 0) - (a.winRate || 0)) : ((a, b) => a.avgRank - b.avgRank);
@@ -149,7 +149,7 @@
       if (bestChar) msgs.push(`캐릭터는 <b>${esc(bestChar.key)}</b>이(가) 가장 좋았습니다 (${fmtRes(bestChar)}, ${bestChar.n}판).`);
       const bestCombo = comboRows.filter(c => c.n >= 3).sort(cmp)[0];
       if (bestCombo) msgs.push(`조합은 <b>${esc(bestCombo.key)}</b>일 때 ${fmtRes(bestCombo)}으로 가장 잘 됐습니다.`);
-      right.appendChild(el('div', { class: 'card section' }, [el('h3', {}, '이 멤버와 할 때 잘 되는 것'), el('div', { html: msgs.length ? msgs.map(m => `<p>${m}</p>`).join('') : '<p class="muted">3판 이상 반복된 캐릭터나 사거리가 아직 없습니다.</p>' })]));
+      right.appendChild(el('div', { class: 'card section' }, [el('h3', {}, '이 멤버와 할 때 잘 되는 것'), el('div', { html: msgs.length ? msgs.map(m => `<p>${m}</p>`).join('') : '<p class="mu">3판 이상 반복된 캐릭터나 사거리가 아직 없습니다.</p>' })]));
       right.appendChild(el('div', { class: 'section' }, [el('h3', {}, '내 사거리별'), statTable(byRange, '사거리')]));
       right.appendChild(el('div', { class: 'section' }, [el('h3', {}, '내 캐릭터별'), statTable(byChar, '캐릭터')]));
       right.appendChild(el('div', { class: 'section' }, [el('h3', {}, '캐릭터 조합별 (나 + 팀원)'), statTable(comboRows, '조합')]));
@@ -158,5 +158,5 @@
     list(); detail();
   }
 
-  registerView({ id: 'companions', label: '같이 한 사람들', order: 35, season: true, render });
+  registerView({ id: 'companions', label: '같이 한 사람들', order: 35, filters: true, render });
 })();

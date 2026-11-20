@@ -10,7 +10,7 @@ import { quota, claimLegacy, deleteAccount, importData, bootstrap } from './user
 import './features/companions.js';
 import './features/notes.js';
 
-const VERSION = 'v0.4';
+const VERSION = 'v0.5';
 const OWNER_REFRESH_MS = 6 * 3600 * 1000;
 const META_REFRESH_MS = 24 * 3600 * 1000;
 const MAX_SEASONS = 8;

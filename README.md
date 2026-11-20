@@ -46,11 +46,14 @@ GitHub Pages 화면 ──(비밀 코드 포함 요청)──┘      └── 
 
 ```
 index.html          화면 뼈대
-css/style.css       스타일 (다크, PC 우선)
+css/style.css       스타일 (색 토큰, 어둡게·밝게, 휴대폰 화면)
 js/config.js        서버 주소 기본값 (비워 두면 첫 화면에서 묻는다)
 js/api.js           서버 호출, 로그인 세션 저장
 js/analysis.js      경기 배열 → 지표 (내 경기와 조회 경기가 공유)
-js/app.js           화면 로직 (해시 라우팅, 기능 등록 창구 ERV)
+js/ui.js            화면 상태와 무관한 도구 (DOM, 숫자 형식, 차트, 테마)
+js/core.js          앱 뼈대 (상태, 화면 등록·이동, 모드·시즌, 로그인, 갱신. 등록 창구 ERV)
+js/components.js    여러 화면이 쓰는 표·카드
+js/views/*.js       화면 하나당 파일 하나 (홈, 캐릭터, 전략, 조회, 기록, 내 계정, 공유 노트)
 js/features/*.js    기능 파일 (하나씩 격리, index.html 한 줄로 켜고 끔)
 js/vendor/chart.umd.js  Chart.js 4.4.1 (MIT)
 worker/src/index.js        요청 라우터, 1분 cron
@@ -77,7 +80,7 @@ tools/mock_discord.py 개발용 가짜 디스코드 로그인
 | 큰 기능 변화 | 0.x 단위 +1 | v0.19 → v0.2 → v0.21 |
 | 정식 공개 | 정수 | v1 |
 
-사이트(`js/app.js`)와 서버(`worker/src/index.js`)의 VERSION은 같은 번호를 쓰고, 설정 화면에서 볼 수 있다.
+사이트(`js/core.js`)와 서버(`worker/src/index.js`)의 VERSION은 같은 번호를 쓰고, 설정 화면에서 볼 수 있다.
 
 ## 외부 라이브러리
 
