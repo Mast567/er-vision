@@ -171,7 +171,7 @@ dl.info dd { margin: 0; overflow-wrap: anywhere; }
 /* 프로필 (조회 결과·홈 맨 위). 티어는 이름 + 색, 공식 엠블럼 그림은 쓰지 않는다 */
 .profile { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 14px 24px; margin-bottom: var(--gap); }
 .profile-main { display: flex; gap: 16px; align-items: center; }
-.tier-icon { flex: none; width: 72px; height: 72px; }
+.tier-icon { flex: none; width: auto; height: 104px; }
 .tier-badge { flex: none; width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; font-size: 24px; font-weight: 900; color: var(--mu); background: var(--sf2); border: 3px dashed var(--ln); }
 .profile-id { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .profile-nick { font-size: 22px; font-weight: 900; overflow-wrap: anywhere; }

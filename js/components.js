@@ -79,11 +79,11 @@
   }
 
   // ---- 프로필 (닉네임 조회 결과와 홈 맨 위). stats: 서버 seasonStats 배열(최신 시즌부터)
-  // 티어 이름은 서버의 티어 기준표로 붙인다. 아이콘(img/tiers/*.svg)은 공식 엠블럼이 아닌 자체 그림이다.
+  // 티어 이름은 서버의 티어 기준표로 붙인다. 엠블럼(img/tiers/*.png)은 님블뉴런의 사용 허가를 받은 공식 이미지이며 변형하지 않는다.
   const TIER_ICON = { 아이언: 'iron', 브론즈: 'bronze', 실버: 'silver', 골드: 'gold', 플래티넘: 'platinum', 다이아몬드: 'diamond', 메테오라이트: 'meteorite', 미스릴: 'mithril', 데미갓: 'demigod', 이터니티: 'eternity' };
   function tierBadge(t) {
     const icon = t && t.tier && TIER_ICON[t.tier];
-    if (icon) return el('img', { class: 'tier-icon', src: `img/tiers/${icon}.svg`, alt: t.tier, width: 72, height: 72 });
+    if (icon) return el('img', { class: 'tier-icon', src: `img/tiers/${icon}.png`, alt: t.tier, width: 145, height: 185 });
     return el('div', { class: 'tier-badge' }, '?');
   }
   function profileCard(nickname, stats) {

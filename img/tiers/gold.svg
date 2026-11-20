@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-<path d="M12 23H52V34C52 46 43 54 32 59C21 54 12 46 12 34Z" fill="#E0B24A" stroke="#1B1F27" stroke-width="2.5" stroke-linejoin="round"/>
-<path d="M32 23H12V34C12 46 21 54 32 59Z" fill="#F0C865"/>
-<path d="M12 23H52V34C52 46 43 54 32 59C21 54 12 46 12 34Z" fill="none" stroke="#1B1F27" stroke-width="2.5" stroke-linejoin="round"/>
-<polygon points="12,23 15,9 24,17 32,5 40,17 49,9 52,23" fill="#F6D98A" stroke="#1B1F27" stroke-width="2.5" stroke-linejoin="round"/>
-<circle cx="32" cy="38" r="5.5" fill="#B58428" stroke="#1B1F27" stroke-width="1.5"/>
-</svg>
