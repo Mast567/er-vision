@@ -44,9 +44,12 @@ p { margin: 8px 0 0; }
 
 /* ---- 상단 막대 */
 .topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 20px; padding: 10px 24px; background: var(--sf); border-bottom: 1px solid var(--ln); }
-.brand { display: flex; align-items: baseline; gap: 10px; white-space: nowrap; }
-.brand-name { font-weight: 900; font-size: 17px; letter-spacing: .02em; }
-.brand-sub { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; color: var(--ac); }
+.brand { display: flex; align-items: center; flex: none; }
+/* 로고(작전 좌표 · 조준 눈금 · 스텐실). 색은 테마를 따른다: 틀과 ER = 강조색, VISION = 글자색, 스텐실 끊김 = 상단 막대 바탕색 */
+.brand-logo { height: 40px; width: auto; display: block; }
+.lg-ac { stroke: var(--ac); }
+.lg-fg { stroke: var(--tx); }
+.lg-gap { fill: var(--sf); }
 .nav { display: flex; gap: 2px; flex: 1; min-width: 0; }
 .nav a { color: var(--mu); padding: 7px 12px; border-radius: 6px; white-space: nowrap; }
 .nav a:hover { color: var(--tx); background: var(--sf2); }
@@ -221,7 +224,7 @@ dl.info dd { margin: 0; overflow-wrap: anywhere; }
 }
 @media (max-width: 760px) {
   .topbar { flex-wrap: wrap; gap: 8px 12px; padding: 10px 16px; }
-  .brand-sub { display: none; }
+  .brand-logo { height: 34px; }
   .nav { order: 3; flex-basis: 100%; overflow-x: auto; scrollbar-width: none; }
   .topbar-right { margin-left: auto; }
   .filters-bar { order: 4; flex-basis: 100%; }
