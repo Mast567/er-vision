@@ -48,7 +48,8 @@ p { margin: 8px 0 0; }
 /* 로고(작전 좌표 · 조준 눈금 · 스텐실). 색은 테마를 따른다: 틀과 ER = 강조색, VISION = 글자색, 스텐실 끊김 = 상단 막대 바탕색 */
 .brand-logo { height: 40px; width: auto; display: block; }
 .lg-ac { stroke: var(--ac); }
-.lg-fg { stroke: var(--tx); }
+.lg-ac-f { fill: var(--ac); }
+.lg-fg-f { fill: var(--tx); }
 .lg-gap { fill: var(--sf); }
 .nav { display: flex; gap: 2px; flex: 1; min-width: 0; }
 .nav a { color: var(--mu); padding: 7px 12px; border-radius: 6px; white-space: nowrap; }
