@@ -4,17 +4,26 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ER Vision</title>
-<meta name="description" content="이터널 리턴 랭크 복기 노트. 경기 기록 분석, 리플레이 복기, 코칭 리포트.">
+<meta name="description" content="이터널 리턴 랭크 점수(RP)를 올리기 위한 개인 기록 분석 도구.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
+<link rel="icon" href="img/logo/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="css/style.css">
 <script src="js/vendor/chart.umd.js"></script>
 </head>
 <body>
 <header class="topbar">
-  <div class="brand"><span class="logo">ER</span><span class="brand-name">Vision</span><span class="brand-sub">랭크 복기 노트</span></div>
+  <a class="brand" href="#/home" aria-label="ER Vision 홈"><svg class="brand-logo" viewBox="-34 -34 550 168" role="img" aria-label="ER Vision"><title>ER Vision</title><path d="M-24,0 V-24 H0" fill="none" class="lg-ac" stroke-width="6"/><path d="M126,-24 H150 V0" fill="none" class="lg-ac" stroke-width="6"/><path d="M150,100 V124 H126" fill="none" class="lg-ac" stroke-width="6"/><path d="M0,124 H-24 V100" fill="none" class="lg-ac" stroke-width="6"/><path d="M63.0,-29 V-19" fill="none" class="lg-ac" stroke-width="6"/><path d="M63.0,129 V119" fill="none" class="lg-ac" stroke-width="6"/><path d="M-29,50.0 H-19" fill="none" class="lg-ac" stroke-width="6"/><path d="M155,50.0 H145" fill="none" class="lg-ac" stroke-width="6"/><path transform="translate(0 0)" d="M0,0 L56,0 L56,16 L16,16 L16,42 L48,42 L48,58 L16,58 L16,84 L56,84 L56,100 L0,100 Z" fill-rule="evenodd" class="lg-ac-f"/><rect x="16" y="0" width="4" height="100" class="lg-gap"/><path transform="translate(66 0)" d="M0,0 L48,0 L60,12 L60,46 L52,54 L60,100 L44,100 L37,58 L16,58 L16,100 L0,100 Z M16,16 L40,16 L44,20 L44,38 L40,42 L16,42 Z" fill-rule="evenodd" class="lg-ac-f"/><rect x="82" y="0" width="4" height="58" class="lg-gap"/><g transform="translate(180 0)"><path transform="translate(0 0)" d="M0,0 L16,0 L32,66.6667 L48,0 L64,0 L40,100 L24,100 Z" fill-rule="evenodd" class="lg-fg-f"/><rect x="0" y="48" width="64" height="4" class="lg-gap"/><path transform="translate(74 0)" d="M0,0 L16,0 L16,100 L0,100 Z" fill-rule="evenodd" class="lg-fg-f"/><rect x="74" y="48" width="16" height="4" class="lg-gap"/><path transform="translate(100 0)" d="M10,0 L56,0 L56,16 L16,16 L16,42 L46,42 L56,52 L56,90 L46,100 L0,100 L0,84 L40,84 L40,58 L10,58 L0,48 L0,10 Z" fill-rule="evenodd" class="lg-fg-f"/><rect x="126" y="0" width="4" height="16" class="lg-gap"/><rect x="126" y="84" width="4" height="16" class="lg-gap"/><path transform="translate(166 0)" d="M0,0 L16,0 L16,100 L0,100 Z" fill-rule="evenodd" class="lg-fg-f"/><rect x="166" y="48" width="16" height="4" class="lg-gap"/><path transform="translate(192 0)" d="M12,0 L48,0 L60,12 L60,88 L48,100 L12,100 L0,88 L0,12 Z M22,16 L38,16 L44,22 L44,78 L38,84 L22,84 L16,78 L16,22 Z" fill-rule="evenodd" class="lg-fg-f"/><rect x="220" y="0" width="4" height="16" class="lg-gap"/><rect x="220" y="84" width="4" height="16" class="lg-gap"/><path transform="translate(262 0)" d="M0,0 L16,0 L48,62 L48,0 L64,0 L64,100 L48,100 L16,38 L16,100 L0,100 Z" fill-rule="evenodd" class="lg-fg-f"/><rect x="278" y="0" width="4" height="38" class="lg-gap"/><rect x="306" y="62" width="4" height="38" class="lg-gap"/></g></svg></a>
   <nav class="nav" id="nav"></nav>
+  <div class="filters-bar" id="filters" hidden>
+    <select id="mode-pick" aria-label="모드"></select>
+    <select id="season-pick" aria-label="시즌"></select>
+  </div>
   <div class="topbar-right">
-    <label class="season-pick" id="season-pick-wrap"><span class="muted">모드</span><select id="mode-pick"></select><span class="muted" style="margin-left:8px">시즌</span><select id="season-pick"></select></label>
     <span id="owner-chip" class="chip"></span>
+    <button class="icon-btn" id="theme-btn" title="밝게/어둡게" aria-label="밝게/어둡게 바꾸기">◐</button>
+    <button class="btn primary" id="refresh-btn">지금 갱신</button>
   </div>
 </header>
 
@@ -22,14 +31,18 @@
 
 <div id="toast" class="toast" hidden></div>
 
+<footer class="site-foot">
+  ER Vision은 님블뉴런 또는 카카오게임즈의 공식 서비스가 아닙니다. 경기 정보는 <a href="https://developer.eternalreturn.io/" target="_blank" rel="noopener">이터널 리턴 Open API</a>로 받아오며 <a href="https://support.playeternalreturn.com/hc/ko/articles/58134893725593" target="_blank" rel="noopener">API 이용 약관</a>을 따릅니다. 이터널 리턴의 이름과 게임 콘텐츠에 대한 권리는 님블뉴런에 있습니다.
+</footer>
+
 <template id="tpl-gate">
   <section class="gate">
     <h1>ER Vision</h1>
-    <p class="muted">이터널 리턴 복기 노트. 내 경기 기록을 모아 분석하고, 판마다 복기노트를 남깁니다. 복기노트는 나만 볼 수 있습니다.</p>
+    <p class="mu">내 랭크 기록을 모아 RP를 올리는 데 필요한 것만 보여 줍니다. 내 기록은 나만 볼 수 있습니다.</p>
     <label id="gate-url-wrap">서버 주소<input id="gate-url" type="url" placeholder="https://er-vision.….workers.dev"></label>
-    <div class="row"><button class="btn primary" id="gate-go">디스코드로 로그인</button><span id="gate-msg" class="muted"></span></div>
+    <div class="row"><button class="btn primary" id="gate-go">디스코드로 로그인</button><span id="gate-msg" class="mu"></span></div>
     <details class="help"><summary>무엇을 가져가나요?</summary>
-      <p>디스코드 고유번호와 표시 이름만 받습니다. 이메일, 친구 목록, 서버 목록은 받지 않습니다. 계정은 설정에서 언제든 삭제할 수 있습니다.</p>
+      <p>디스코드 고유번호와 표시 이름만 받습니다. 이메일, 친구 목록, 서버 목록은 받지 않습니다. 계정은 내 계정 화면에서 언제든 삭제할 수 있습니다.</p>
     </details>
   </section>
 </template>
@@ -37,7 +50,17 @@
 <script src="js/config.js"></script>
 <script src="js/api.js"></script>
 <script src="js/analysis.js"></script>
-<script src="js/app.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/core.js"></script>
+<script src="js/components.js"></script>
+<!-- 화면: 한 줄 = 화면 하나 -->
+<script src="js/views/home.js"></script>
+<script src="js/views/character.js"></script>
+<script src="js/views/strategy.js"></script>
+<script src="js/views/lookup.js"></script>
+<script src="js/views/records.js"></script>
+<script src="js/views/account.js"></script>
+<script src="js/views/shared.js"></script>
 <!-- 기능 파일: 한 줄 = 기능 하나. 빼고 싶으면 그 줄만 지운다 -->
 <script src="js/features/companions.js"></script>
 </body>

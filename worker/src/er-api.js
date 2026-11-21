@@ -15,10 +15,15 @@ export class ErApi {
       if (wait > 0) await sleep(wait);
       this.left--; this.last = Date.now();
       const r = await fetch(url, { headers });
-      if (r.status === 429) { await sleep(3000); if (this.left <= 0) throw new BudgetError(); continue; }
+      if (r.status === 429) {
+        const after = Number(r.headers.get('Retry-After'));
+        await sleep(Math.min(r.headers.get('Retry-After') !== null && Number.isFinite(after) && after >= 0 ? Math.max(after * 1000, 500) : 3000, 10000));
+        if (this.left <= 0) throw new BudgetError();
+        continue;
+      }
       return r;
     }
-    throw new Error('게임 API 요청이 너무 많습니다(429). 잠시 뒤 다시 시도하세요.');
+    const e = new Error('게임 API 요청이 너무 많습니다(429). 잠시 뒤 다시 시도하세요.'); e.status = 429; throw e;
   }
   async text(path) {
     const r = await this.raw(this.base + path, { 'x-api-key': this.env.ER_API_KEY || '', accept: 'application/json' });
@@ -54,26 +59,54 @@ export function extractPlayers(text) {
 const num = v => { const s = String(v ?? ''); return /^\d+$/.test(s) ? Number(s) : null; };
 const avg = arr => { const a = arr.filter(x => typeof x === 'number'); return a.length ? Math.round(a.reduce((s, x) => s + x, 0) / a.length) : null; };
 
-// 사이트가 쓰는 경기 모양
-export function normGame(g) {
-  const gain = g.mmrGainInGame || 0, cost = g.mmrLossEntryCost || 0, gam = g.gambit ? (g.mmrGainGambit || 0) : 0;
+export const DATA_V = 2;   // 경기 모양이 바뀌면 올린다. 낮은 버전의 경기는 목록을 다시 받아 채운다.
+// API 값이 숫자가 아니어도(문자열·빈 값) 계산이 오염되지 않게 한다
+const toNum = v => typeof v === 'number' ? (Number.isFinite(v) ? v : null) : typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v.trim()) ? Number(v) : null;
+const z = v => toNum(v) ?? 0;
+const opt = toNum;
+const isMap = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+const parseMap = v => { if (isMap(v)) return v; if (typeof v !== 'string' || !v) return null; try { const o = JSON.parse(v); return isMap(o) ? o : null; } catch { return null; } };
+// 등수는 1 이상 정수. 한 로비는 최대 24명이라 그보다 큰 등수는 잘못된 값이다.
+const rankOf = v => { const n = toNum(v); return Number.isInteger(n) && n >= 1 && n <= 24 ? n : null; };
+const codes = v => (Array.isArray(v) ? v : []).map(toNum).filter(x => x !== null);
+
+// 경기 목록 한 줄에서 사이트가 쓰는 칸만 뽑는다. 기준: 공식 Open API 문서 BattleUserResult.
+// 사망 지역·킬러 캐릭터·사망 원인은 문서상 지원이 끊긴 값이라 쓰지 않는다.
+// 페이즈별 킬·데스는 문서상 코발트 전용이라 코발트에서만 담는다.
+export function listFields(g) {
+  const gain = z(g.mmrGainInGame), cost = z(g.mmrLossEntryCost);
+  const rp = opt(g.mmrAfter ?? g.rankPoint), rpBefore = opt(g.mmrBefore);
+  // 실제 RP 변화: 경기 전후 RP가 있으면 그 차이(갬빗 포함), 없으면 게임 내 획득 + 입장료
+  const rpChange = rp !== null && rpBefore !== null ? rp - rpBefore : gain + cost;
+  const mode = toNum(g.matchingMode), cobalt = mode === 6;
+  const phase = v => cobalt ? z(v) : null;
   return {
-    gameId: g.gameId, startDtm: String(g.startDtm).substring(0, 19).replace('T', ' '), seasonId: g.seasonId,
-    characterNum: g.characterNum, gameRank: g.gameRank,
-    kills: g.playerKill || 0, assists: g.playerAssistant || 0, deaths: g.playerDeaths || 0, teamKill: g.teamKill || 0,
-    dmgDealt: g.damageToPlayer || 0, dmgTaken: g.damageFromPlayer || 0,
-    surviveMin: Math.round((g.playTime || 0) / 6) / 10, durationMin: Math.round((g.duration || 0) / 6) / 10,
-    d1: g.deathsPhaseOne || 0, d2: g.deathsPhaseTwo || 0, d3: g.deathsPhaseThree || 0,
-    k1: g.killsPhaseOne || 0, k2: g.killsPhaseTwo || 0, k3: g.killsPhaseThree || 0,
-    rpChange: gain + cost + gam, rp: g.rankPoint ?? null, entryCost: cost, rpGain: gain, gambitRp: g.mmrGainGambit ?? null,
-    startArea: num(g.placeOfStart), deathArea: num(g.placeOfDeath),
-    causeOfDeath: g.causeOfDeath || '', killerChar: g.killerCharacter || '',
-    teamNumber: g.teamNumber, nickname: g.nickname,
-    mode: g.matchingMode, teamMode: g.matchingTeamMode, victory: g.victory ? 1 : 0,
-    premade: g.preMade == null ? null : Number(g.preMade),
-    mate1: '', mate2: '', mate3: '', teamAvgRp: null, lobbyAvgRp: null
+    v: DATA_V,
+    gameId: toNum(g.gameId), startDtm: String(g.startDtm ?? '').substring(0, 19).replace('T', ' '), seasonId: z(g.seasonId),
+    mode, teamMode: opt(g.matchingTeamMode),
+    characterNum: opt(g.characterNum), weapon: opt(g.bestWeapon), weaponLv: opt(g.bestWeaponLevel),
+    core: opt(g.traitFirstCore), subs: codes(g.traitFirstSub).concat(codes(g.traitSecondSub)), tactical: opt(g.tacticalSkillGroup),
+    route: opt(g.routeIdOfStart) || null, startArea: num(g.placeOfStart),
+    gameRank: rankOf(g.gameRank), victory: g.victory ? 1 : 0,
+    kills: z(g.playerKill), assists: z(g.playerAssistant), deaths: z(g.playerDeaths), teamKill: z(g.teamKill),
+    teamElim: opt(g.teamElimination), clutch: opt(g.clutchCount), terminate: opt(g.terminateCount),
+    killers: parseMap(g.deathDetails), victims: parseMap(g.killDetails),
+    dmgDealt: z(g.damageToPlayer), dmgTaken: z(g.damageFromPlayer), monsterDmg: opt(g.damageToMonster),
+    vision: opt(g.viewContribution), credits: opt(g.totalGainVFCredit), creditAnimal: opt(g.crGetAnimal),
+    surviveMin: Math.round(z(g.playTime) / 6) / 10, durationMin: Math.round(z(g.duration) / 6) / 10,
+    d1: phase(g.deathsPhaseOne), d2: phase(g.deathsPhaseTwo), d3: phase(g.deathsPhaseThree),
+    k1: phase(g.killsPhaseOne), k2: phase(g.killsPhaseTwo), k3: phase(g.killsPhaseThree),
+    rpChange, rpGain: gain, entryCost: cost, gambit: g.gambit === true || g.gambit === 1 ? 1 : 0,
+    rp, rpBefore, teamMmr: opt(g.mmrAvg),
+    teamNumber: opt(g.teamNumber), nickname: typeof g.nickname === 'string' ? g.nickname : '',
+    premade: opt(g.preMade), premadeType: opt(g.premadeMatchingType)
   };
 }
+// 경기 상세(/v1/games)에서만 얻는 칸. 새 경기는 빈 값으로 시작한다.
+const DETAIL_DEFAULTS = { mate1: '', mate2: '', mate3: '', teamAvgRp: null, lobbyAvgRp: null };
+export const normGame = g => Object.assign(listFields(g), DETAIL_DEFAULTS);
+// 이미 저장된 경기를 새 모양으로 덮을 때 쓰는 JSON 패치. 상세에서 얻은 칸은 남기고, 지원이 끊긴 옛 칸은 지운다.
+export const listPatch = g => JSON.stringify(Object.assign(listFields(g), { killerChar: null, causeOfDeath: null, deathArea: null, gambitRp: null }));
 export function attachDetail(n, players, charName) {
   const team = players.filter(p => p.teamNumber === n.teamNumber);
   const mates = team.filter(p => p.nickname !== n.nickname).map(p => charName(p.characterNum));

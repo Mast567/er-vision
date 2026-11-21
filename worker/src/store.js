@@ -79,35 +79,6 @@ export async function refreshMeta(ctx) {
   await kvDel(ctx, 'meta');
   return { characters: chars.length, areas: areas.length };
 }
-// 공식 한국어 번역 파일(수 MB)을 줄 단위로 흘려 읽으며 캐릭터·지역 이름만 고른다
-export async function refreshKorean(ctx) {
-  const l10 = await ctx.api.get('/v1/l10n/Korean');
-  const url = l10.data && l10.data.l10Path;
-  if (!url) throw new Error('번역 파일 주소를 받지 못했습니다.');
-  const r = await ctx.api.raw(url, {});
-  const reader = r.body.pipeThrough(new TextDecoderStream()).getReader();
-  const re = /^(Character|Area)\/Name\/(\d+)\s*[┃|\t]\s*(.+?)\s*$/;
-  const found = { character: [], area: [] };
-  let buf = '';
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (value) buf += value;
-    let i;
-    while ((i = buf.indexOf('\n')) >= 0) {
-      const line = buf.slice(0, i); buf = buf.slice(i + 1);
-      if (line.startsWith('Character/Name/') || line.startsWith('Area/Name/')) {
-        const m = line.match(re);
-        if (m) found[m[1] === 'Character' ? 'character' : 'area'].push([Number(m[2]), m[3]]);
-      }
-    }
-    if (done) break;
-  }
-  const stmts = [];
-  for (const kind of ['character', 'area']) for (const [code, ko] of found[kind]) stmts.push(ctx.db.prepare('UPDATE meta SET ko = ? WHERE kind = ? AND code = ?').bind(ko, kind, code));
-  await batchAll(ctx, stmts);
-  await kvDel(ctx, 'meta');
-  return { characters: found.character.length, areas: found.area.length };
-}
 export async function seasons(ctx) {
   const cached = await kvGet(ctx, 'seasons');
   if (cached) return JSON.parse(cached);
@@ -120,7 +91,8 @@ export async function seasonStats(ctx, uid, limit) {
   const key = 'sst:' + uid + ':' + limit;
   const cached = await kvGet(ctx, key);
   if (cached) return JSON.parse(cached);
-  const list = (await seasons(ctx)).filter(s => s.id > 0).sort((a, b) => b.id - a.id).slice(0, limit);
+  // 프리 시즌(일주일 남짓)은 빼고 정규 시즌만 센다. 빼지 않으면 시즌 초에 개수 한도를 프리 시즌이 차지한다.
+  const list = (await seasons(ctx)).filter(s => s.id > 0 && !/^Pre-/i.test(String(s.name))).sort((a, b) => b.id - a.id).slice(0, limit);
   const out = [];
   for (const s of list) {
     try {
@@ -145,4 +117,20 @@ export async function lookupUid(ctx, nickname) {
   if (!uid) throw new Error('닉네임을 찾지 못했습니다: ' + nickname);
   await kvPut(ctx, 'uid:' + nickname, uid, 21600);
   return uid;
+}
+// UID는 임시 값이라 바뀔 수 있다(공식 문서). 저장해 둔 UID로 404가 나면 닉네임으로 새 UID를 받아 한 번만 다시 시도한다.
+// 바뀐 UID는 404(User Not Found), 형식이 틀린 UID는 401로 돌아온다
+const userGone = e => e && [401, 404].some(c => e.apiCode === c || e.status === c);
+export async function withUid(ctx, nickname, uid, saveUid, fn) {
+  try { return await fn(uid); }
+  catch (e) {
+    if (!userGone(e) || !nickname) throw e;
+    await kvDel(ctx, 'uid:' + nickname);
+    let fresh;
+    try { fresh = await lookupUid(ctx, nickname); }
+    catch { throw new Error(`게임에서 '${nickname}'을(를) 찾지 못했습니다. 닉네임을 바꿨다면 새 닉네임으로 다시 설정하세요.`); }
+    if (fresh === uid) throw e;
+    await saveUid(fresh);
+    return fn(fresh);
+  }
 }

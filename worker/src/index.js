@@ -3,14 +3,17 @@
 import { ext } from './ext.js';
 import { startLogin, finishLogin, sessionUser } from './auth.js';
 import { CORS, sendRaw, okObj, fail, toInt } from './util.js';
-import { makeCtx, withLock, settings, seasonStats, lookupUid, refreshMeta, refreshKorean } from './store.js';
+import { DATA_V } from './er-api.js';
+import { makeCtx, withLock, settings, seasonStats, lookupUid, refreshMeta } from './store.js';
 import { ownerUid, ownerRefresh, pendingOwner, workJob, deepLookup, jobStatus, quickLookup } from './collect.js';
-import { noteObj, noteStmt, reportStmt, shareNote, sharedNote, quota, claimLegacy, deleteAccount, importData, bootstrap } from './user.js';
+import { quota, claimLegacy, deleteAccount, importData, bootstrap, saveTiers } from './user.js';
 import './features/companions.js';
+import './features/notes.js';
 
-const VERSION = 'v0.31';
+const VERSION = 'v0.5';
 const OWNER_REFRESH_MS = 6 * 3600 * 1000;
 const META_REFRESH_MS = 24 * 3600 * 1000;
+const MAX_SEASONS = 8;
 const ACTIVE_MS = 60 * 86400 * 1000;   // 60일 안에 들어온 사람만 자동 수집 (게임 API는 90일까지만 보관)
 
 async function handle(request, env) {
@@ -23,24 +26,18 @@ async function handle(request, env) {
   const action = p.action || 'ping';
   if (action === 'ping') return sendRaw(JSON.stringify({ ok: true, version: VERSION, backend: 'worker', loginReady: !!(env.DISCORD_CLIENT_ID && env.DISCORD_CLIENT_SECRET) }));
   const ctx = makeCtx(env);
-  if (action === 'shared') return sharedNote(ctx, String(p.id || ''));
+  if (ext.publicActions[action]) return ext.publicActions[action](ctx, p);
 
   const u = await sessionUser(ctx.db, request, p);
   if (!u) return fail('로그인이 필요합니다.', { needLogin: true });
   ctx.user = u;
   const nick = String(p.nickname || '').trim();
-  const gameId = Number(p.gameId);
   const admin = () => { if (!u.is_admin) throw new Error('관리자만 쓸 수 있습니다.'); };
   switch (action) {
     case 'bootstrap': return bootstrap(ctx, u);
-    case 'seasonStats': return okObj(u.nickname ? await seasonStats(ctx, await ownerUid(ctx, u), toInt(p.limit, 8)) : []);
+    case 'seasonStats': return okObj(u.nickname ? await seasonStats(ctx, await ownerUid(ctx, u), Math.min(Math.max(toInt(p.limit, MAX_SEASONS), 1), MAX_SEASONS)) : []);
     case 'refresh':
       return okObj(await withLock(ctx, 'owner:' + u.id, 90000, () => ownerRefresh(ctx, u), async () => ({ added: 0, remaining: await pendingOwner(ctx, u), busy: true })));
-    case 'saveNote': { const n = noteObj(p); if (!n.gameId) throw new Error('gameId가 필요합니다.'); await noteStmt(ctx, u.id, n).run(); return okObj({ gameId: n.gameId }); }
-    case 'deleteNote': { const r = await ctx.db.prepare('DELETE FROM u_notes WHERE user_id = ? AND game_id = ?').bind(u.id, gameId).run(); return okObj({ deleted: r.meta.changes > 0 }); }
-    case 'shareNote': return okObj(await shareNote(ctx, u, gameId));
-    case 'unshareNote': await ctx.db.prepare('UPDATE u_notes SET share_id = NULL WHERE user_id = ? AND game_id = ?').bind(u.id, gameId).run(); return okObj({ gameId });
-    case 'saveReport': await reportStmt(ctx, u.id, p).run(); return okObj({ saved: true });
     case 'lookup': return quickLookup(ctx, nick, quota(ctx, u, 'quick'));
     case 'deep': return deepLookup(ctx, nick, p.force === '1' || p.force === true, quota(ctx, u, 'deep'));
     case 'jobStatus': return jobStatus(ctx, nick);
@@ -55,29 +52,30 @@ async function handle(request, env) {
     case 'logout': await ctx.db.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(u.tokenHash).run(); return okObj({ loggedOut: true });
     case 'deleteAccount': return okObj(await deleteAccount(ctx, u));
     case 'refreshMeta': admin(); return okObj(await refreshMeta(ctx));
-    case 'refreshKorean': admin(); return okObj(await refreshKorean(ctx));
+    case 'setTiers': admin(); return okObj(await saveTiers(ctx, p.tiers));
     default:
       if (ext.actions[action]) return okObj(await ext.actions[action](ctx, p));
       return fail('알 수 없는 action: ' + action);
   }
 }
 
-// 1분마다: 정밀 분석 대기열 → 가장 오래 수집하지 않은 사용자 한 명 → 메타
+// 1분마다: 만료된 kv 정리 → 정밀 분석 대기열 → 가장 오래 수집하지 않은 사용자 한 명(형식이 낮은 경기 다시 채우기 포함) → 메타
 async function tick(env) {
   const ctx = makeCtx(env);
   await withLock(ctx, 'tick', 55000, async () => {
+    await ctx.db.prepare("DELETE FROM kv WHERE expires < ?").bind(Date.now()).run();
     if (await workJob(ctx)) return;
     const now = Date.now();
     const u = await ctx.db.prepare(`SELECT * FROM users u WHERE u.nickname <> '' AND u.last_seen > ?
-      AND (u.list_next <> '' OR u.last_fetch_ms < ? OR EXISTS (SELECT 1 FROM u_games g WHERE g.user_id = u.id AND g.detail_done = 0))
-      ORDER BY u.last_fetch_ms LIMIT 1`).bind(now - ACTIVE_MS, now - OWNER_REFRESH_MS).first();
+      AND (u.list_next <> '' OR u.data_v < ? OR u.last_fetch_ms < ? OR EXISTS (SELECT 1 FROM u_games g WHERE g.user_id = u.id AND g.detail_done = 0))
+      ORDER BY u.last_fetch_ms LIMIT 1`).bind(now - ACTIVE_MS, DATA_V, now - OWNER_REFRESH_MS).first();
     if (u) {
       await withLock(ctx, 'owner:' + u.id, 90000, async () => {
         try { await ownerRefresh(ctx, u); }
         catch (e) {
-          // 닉네임이 바뀌었거나 없어진 사람이 다른 사람의 수집을 막지 않게 순서를 뒤로 보낸다
+          // 닉네임이 바뀌었거나 없어진 사람이 다른 사람의 수집을 막지 않게 순서를 뒤로 보낸다. 요청 과다(429)는 다음 실행에서 다시 시도한다.
           console.log('owner refresh error', u.id, e && e.message);
-          await ctx.db.prepare('UPDATE users SET last_fetch_ms = ? WHERE id = ?').bind(Date.now(), u.id).run();
+          if (e.status !== 429) await ctx.db.prepare('UPDATE users SET last_fetch_ms = ? WHERE id = ?').bind(Date.now(), u.id).run();
         }
       });
       return;
