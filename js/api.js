@@ -50,9 +50,10 @@ const API = (() => {
     const u = new URL(base()); u.searchParams.set('action', 'shared'); u.searchParams.set('id', id);
     return readJson(await fetch(u.toString()));
   }
-  function loginUrl() {
+  // provider: 'discord' | 'google'. link: 내 계정에서 다른 로그인 수단을 연결할 때 서버가 준 일회용 표
+  function loginUrl(provider, link) {
     const ret = location.origin + location.pathname;
-    return new URL('auth/discord', base().replace(/\/?$/, '/')).toString() + '?return=' + encodeURIComponent(ret);
+    return new URL('auth/' + provider, base().replace(/\/?$/, '/')).toString() + '?return=' + encodeURIComponent(ret) + (link ? '&link=' + encodeURIComponent(link) : '');
   }
   return { store, get, post, ping, shared, loginUrl, NeedLogin };
 })();

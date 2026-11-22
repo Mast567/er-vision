@@ -77,7 +77,8 @@ class Run:
             open(p, 'w').write(src.replace(old, new, 1))
         with open(os.path.join(self.tmp, '.dev.vars'), 'w') as f:
             f.write(f'ER_API_KEY=dummy\nAPI_BASE={self.M}\nSLEEP_MS=0\nSITE_TOKEN=test\nDISCORD_CLIENT_ID=test\nDISCORD_CLIENT_SECRET=test\n'
-                    'DISCORD_AUTHORIZE_URL=http://127.0.0.1:8791/oauth2/authorize\nDISCORD_API=http://127.0.0.1:8791/api\nSITE_ORIGINS=http://127.0.0.1:8765\n')
+                    'DISCORD_AUTHORIZE_URL=http://127.0.0.1:8791/oauth2/authorize\nDISCORD_API=http://127.0.0.1:8791/api\nSITE_ORIGINS=http://127.0.0.1:8765\n'
+                    'GOOGLE_CLIENT_ID=gid\nGOOGLE_CLIENT_SECRET=gtest\nGOOGLE_AUTHORIZE_URL=http://127.0.0.1:8791/google/auth\nGOOGLE_TOKEN_URL=http://127.0.0.1:8791/google/token\n')
         state = os.path.join(self.tmp, 'state')
         subprocess.run(['npx', 'wrangler', 'd1', 'migrations', 'apply', 'er-vision', '--local', '--persist-to', state], cwd=self.tmp, capture_output=True, check=True)
         self.procs.append(subprocess.Popen([sys.executable, os.path.join(ROOT, 'tests', 'mock_random_api.py'), str(self.mport), str(self.seed)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=os.environ, start_new_session=True))
@@ -103,11 +104,21 @@ class Run:
         out = subprocess.run(['npx', 'wrangler', 'd1', 'execute', 'er-vision', '--local', '--persist-to', os.path.join(self.tmp, 'state'), '--json', '--command', cmd], cwd=self.tmp, capture_output=True, text=True, check=True).stdout
         return json.loads(out)[0]['results']
 
-    def login(self, who):
-        st, h, _ = http(self.W + 'auth/discord?return=' + urllib.parse.quote(SITE))
-        state = urllib.parse.parse_qs(urllib.parse.urlparse(h['Location']).query)['state'][0]
-        st, h, _ = http(self.W + f'auth/callback?state={state}&code=code-{who}')
-        return re.search(r'#login=(.+)$', h['Location']).group(1)
+    # provider: discord | google. link: 내 계정에서 받은 연결용 표. 돌아온 주소의 #뒤(login=, linked=, login_error=)를 돌려준다.
+    def oauth(self, who, provider='discord', link=None):
+        st, h, _ = http(self.W + f'auth/{provider}?return=' + urllib.parse.quote(SITE) + (f'&link={link}' if link else ''))
+        loc = urllib.parse.urlparse(h['Location'])
+        if loc.netloc != '127.0.0.1:8791':
+            return urllib.parse.unquote(loc.fragment)
+        state = urllib.parse.parse_qs(loc.query)['state'][0]
+        code = ('gcode-' if provider == 'google' else 'code-') + who
+        st, h, body = http(self.W + f'auth/callback?state={state}&code={code}')
+        return urllib.parse.unquote(urllib.parse.urlparse(h['Location']).fragment) if 'Location' in h else 'page=' + body
+
+    def login(self, who, provider='discord'):
+        frag = self.oauth(who, provider)
+        assert frag.startswith('login='), frag
+        return frag[6:]
 
     def api(self, tok, action, **params):
         q = urllib.parse.urlencode(dict(action=action, **params))
@@ -310,6 +321,36 @@ class Run:
                 self.sql("UPDATE kv SET value = '10' WHERE key LIKE 'rl:guest:%'")
                 g5 = guest(nickname=nick_a)
                 self.check(not g5['ok'] and '10회' in g5['error'], f'11단계: 방문자 IP 한도가 막지 않음 {g5}')
+
+            # 12단계: 로그인 수단 (구글 새 계정, 디스코드 계정에 구글 연결, 겹침 거절, 마지막 수단 해제 거절, 해제 후 다시 연결, 계정 삭제)
+            ping = json.loads(http(self.W + '?action=ping')[2])
+            self.check(ping.get('logins') == {'discord': True, 'google': True}, f'12단계: ping 로그인 수단 {ping}')
+            games_a = sorted(g['gameId'] for g in self.api(alice, 'bootstrap')['data']['games'])
+            carol = self.login('carol', 'google')
+            me_c = self.api(carol, 'bootstrap')['data']['me']
+            self.check([x['provider'] for x in me_c['logins']] == ['google'] and not self.api(carol, 'bootstrap')['data']['games'], f'12단계: 구글 새 계정 {me_c}')
+            link = self.api(alice, 'linkStart', provider='google')['data']['link']
+            self.check(self.oauth('alice', 'google', link) == 'linked=google', '12단계: 디스코드 계정에 구글 연결 실패')
+            alice_g = self.login('alice', 'google')
+            self.check(sorted(g['gameId'] for g in self.api(alice_g, 'bootstrap')['data']['games']) == games_a, '12단계: 구글로 들어온 계정이 디스코드 계정과 다름')
+            self.check(self.oauth('alice', 'google', link).startswith('login_error='), '12단계: 연결용 표를 두 번 쓸 수 있음')
+            link_b = self.api(bob, 'linkStart', provider='google')['data']['link']
+            self.check('이미 다른' in self.oauth('alice', 'google', link_b), '12단계: 다른 계정의 구글을 연결할 수 있음')
+            link_b = self.api(bob, 'linkStart', provider='google')['data']['link']
+            self.check(self.oauth('bob', 'google', link_b) == 'linked=google', '12단계: bob 구글 연결 실패')
+            r = self.api(carol, 'unlinkLogin', provider='google')
+            self.check(not r['ok'] and '마지막' in r['error'], f'12단계: 마지막 로그인 수단이 해제됨 {r}')
+            r = self.api(alice_g, 'unlinkLogin', provider='discord')
+            self.check(r['ok'] and [x['provider'] for x in r['data']['logins']] == ['google'], f'12단계: 디스코드 해제 실패 {r}')
+            self.check(self.sql("SELECT COUNT(*) AS n FROM users WHERE discord_id IS NULL AND id = (SELECT user_id FROM identities WHERE provider = 'google' AND subject LIKE 'g%' ORDER BY created_at LIMIT 1 OFFSET 1)")[0]['n'] == 1, '12단계: 해제한 디스코드 번호가 users에 남음')
+            link = self.api(alice_g, 'linkStart', provider='discord')['data']['link']
+            self.check(self.oauth('alice', 'discord', link) == 'linked=discord', '12단계: 디스코드 다시 연결 실패')
+            alice2 = self.login('alice')
+            self.check(sorted(g['gameId'] for g in self.api(alice2, 'bootstrap')['data']['games']) == games_a, '12단계: 다시 연결한 디스코드가 같은 계정이 아님')
+            self.check(self.sql("SELECT COUNT(*) AS n FROM users")[0]['n'] == 3, '12단계: 계정이 쓸데없이 늘어남')
+            self.check(self.api(carol, 'deleteAccount')['ok'] and self.sql("SELECT COUNT(*) AS n FROM identities WHERE provider = 'google'")[0]['n'] == 2, '12단계: 계정 삭제 뒤 로그인 수단이 남음')
+            st, _, body = http(self.W + 'auth/kakao?return=' + urllib.parse.quote(SITE))
+            self.check(st == 404, f'12단계: 없는 로그인 수단 {st}')
 
             counts = {n: len(mine(n, self.mock('/__truth'))) for n in (nick_a, nick_b, nick_c)}
             return {'seed': self.seed, 'games': counts, 'refresh': [n1, n2, n3], 'errors': [e1, e2, e3], 'apiCalls': self.mock('/__calls')['calls']}

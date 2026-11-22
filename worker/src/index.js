@@ -1,7 +1,7 @@
 // ER Vision 서버 (Cloudflare Workers + D1). 요청: ?action=이름 (+ Authorization: Bearer 세션), 응답: { ok, data | error }
 // 기능별 코드는 src/features/*.js 에서 ext 고리에 등록한다.
 import { ext } from './ext.js';
-import { startLogin, finishLogin, sessionUser } from './auth.js';
+import { startLogin, finishLogin, sessionUser, loginsReady, linkStart, unlinkLogin } from './auth.js';
 import { CORS, sendRaw, okObj, fail, toInt } from './util.js';
 import { DATA_V } from './er-api.js';
 import { makeCtx, withLock, settings, seasonStats, lookupUid, refreshMeta } from './store.js';
@@ -20,12 +20,13 @@ const ACTIVE_MS = 60 * 86400 * 1000;   // 60일 안에 들어온 사람만 자�
 async function handle(request, env) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   const url = new URL(request.url);
-  if (url.pathname === '/auth/discord') return startLogin(env, env.DB, url);
   if (url.pathname === '/auth/callback') return finishLogin(env, env.DB, url);
+  const start = url.pathname.match(/^\/auth\/([a-z]+)$/);
+  if (start) return startLogin(env, env.DB, url, start[1]);
   const p = Object.fromEntries(url.searchParams);
   if (request.method === 'POST') { try { Object.assign(p, JSON.parse(await request.text())); } catch { /* 본문 없음 */ } }
   const action = p.action || 'ping';
-  if (action === 'ping') return sendRaw(JSON.stringify({ ok: true, version: VERSION, backend: 'worker', loginReady: !!(env.DISCORD_CLIENT_ID && env.DISCORD_CLIENT_SECRET) }));
+  if (action === 'ping') { const logins = loginsReady(env); return sendRaw(JSON.stringify({ ok: true, version: VERSION, backend: 'worker', loginReady: Object.values(logins).some(Boolean), logins })); }
   const ctx = makeCtx(env);
   if (ext.publicActions[action]) return ext.publicActions[action](ctx, p);
 
@@ -50,6 +51,8 @@ async function handle(request, env) {
       return okObj({ nickname: nick });
     }
     case 'claimLegacy': return okObj(await claimLegacy(ctx, u, p.legacyToken));
+    case 'linkStart': return okObj(await linkStart(ctx.db, u, String(p.provider || '')));
+    case 'unlinkLogin': return okObj(await unlinkLogin(ctx.db, u, String(p.provider || '')));
     case 'logout': await ctx.db.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(u.tokenHash).run(); return okObj({ loggedOut: true });
     case 'deleteAccount': return okObj(await deleteAccount(ctx, u));
     case 'refreshMeta': admin(); return okObj(await refreshMeta(ctx));

@@ -1,6 +1,7 @@
 // 로그인한 사용자의 데이터: 사용량, 기존 데이터 가져오기, 백업 불러오기, 계정 삭제, bootstrap
 import { ext } from './ext.js';
 import { okRaw, toInt, kst, today, joinRows } from './util.js';
+import { listLogins, loginsReady } from './auth.js';
 import { RANKED_MODE, kvGet, kvPut, settings, settingStmt, batchAll, metaRaw, seasons } from './store.js';
 
 export const LIMITS = { quick: 40, deep: 5 };   // 1명이 하루에 쓸 수 있는 조회 횟수 (관리자 제외)
@@ -41,7 +42,7 @@ export async function claimLegacy(ctx, u, token) {
 
 export async function deleteAccount(ctx, u) {
   const db = ctx.db;
-  await db.batch(['u_games', 'u_notes', 'u_reports', 'u_teammates', 'sessions'].map(t => db.prepare(`DELETE FROM ${t} WHERE user_id = ?`).bind(u.id))
+  await db.batch(['u_games', 'u_notes', 'u_reports', 'u_teammates', 'sessions', 'identities'].map(t => db.prepare(`DELETE FROM ${t} WHERE user_id = ?`).bind(u.id))
     .concat([db.prepare('DELETE FROM users WHERE id = ?').bind(u.id)]));
   return { deleted: true };
 }
@@ -93,13 +94,13 @@ export async function saveTiers(ctx, value) {
 export async function bootstrap(ctx, u) {
   ctx.user = u;
   const s = await settings(ctx);
-  const [meta, seasonList, games] = await Promise.all([metaRaw(ctx), seasons(ctx).catch(() => []), readGames(ctx, u.id)]);
+  const [meta, seasonList, games, logins] = await Promise.all([metaRaw(ctx), seasons(ctx).catch(() => []), readGames(ctx, u.id), listLogins(ctx.db, u.id)]);
   let extra = '';
   for (const h of ext.bootstrap) {
     try { const add = await h(ctx); for (const [k, v] of Object.entries(add)) extra += ',' + JSON.stringify(k) + ':' + v; } catch (e) { console.log('ext', e); }
   }
   const owner = { nickname: u.nickname, uid: u.uid, lastFetch: kst(u.last_fetch_ms) };
-  const me = { name: u.discord_name || '', admin: !!u.is_admin, legacyAvailable: !s.legacyClaimedBy && !!ctx.env.SITE_TOKEN, limits: LIMITS };
+  const me = { name: u.discord_name || '', admin: !!u.is_admin, legacyAvailable: !s.legacyClaimedBy && !!ctx.env.SITE_TOKEN, limits: LIMITS, logins, loginsReady: loginsReady(ctx.env) };
   // 한글 이름표(GitHub Actions가 넣음). 약관상 공개 저장소가 아니라 로그인한 사용자에게만 준다.
   const names = s.names && s.names.startsWith('{') ? s.names : 'null';
   const tiers = s.tiers && s.tiers.startsWith('{') ? s.tiers : 'null';

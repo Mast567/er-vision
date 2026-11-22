@@ -40,10 +40,11 @@
     <h1>ER Vision</h1>
     <p class="mu">내 랭크 기록을 모아 RP를 올리는 데 필요한 것만 보여 줍니다. 내 기록은 나만 볼 수 있습니다.</p>
     <label id="gate-url-wrap">서버 주소<input id="gate-url" type="url" placeholder="https://er-vision.….workers.dev"></label>
-    <div class="row"><button class="btn primary" id="gate-go">디스코드로 로그인</button><span id="gate-msg" class="mu"></span></div>
+    <div class="row"><button class="btn primary" data-login="discord">디스코드로 로그인</button><button class="btn primary" data-login="google" hidden>구글로 로그인</button></div>
+    <span id="gate-msg" class="mu"></span>
     <p><a href="#/lookup">로그인 없이 닉네임 조회하기 →</a></p>
     <details class="help"><summary>무엇을 가져가나요?</summary>
-      <p>디스코드 고유번호와 표시 이름만 받습니다. 이메일, 친구 목록, 서버 목록은 받지 않습니다. 계정은 내 계정 화면에서 언제든 삭제할 수 있습니다.</p>
+      <p>디스코드는 고유번호와 표시 이름만, 구글은 고유번호만 받습니다. 이메일, 친구 목록, 서버 목록은 받지 않습니다. 로그인한 뒤 내 계정 화면에서 다른 수단을 연결하면 어느 쪽으로 들어와도 같은 계정입니다. 계정은 언제든 삭제할 수 있습니다.</p>
     </details>
   </section>
 </template>

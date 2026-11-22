@@ -3,7 +3,7 @@
 const ERV = (() => {
   const { $, el, toast, killCharts } = UI;
   const VERSION = 'v0.6';
-  const S = { boot: null, games: [], mode: 3, season: 'all', seasonStats: null, lookup: null, lookupPending: null, lookupRange: 30, loginError: '', guestRef: null };
+  const S = { boot: null, games: [], mode: 3, season: 'all', seasonStats: null, lookup: null, lookupPending: null, lookupRange: 30, loginError: '', linked: '', guestRef: null };
   // 기준 자료(meta, seasons, tiers): 로그인하면 bootstrap, 로그인 없이 조회하면 조회 결과에 붙어 온 것
   const ref = () => S.boot || S.guestRef || { meta: null, seasons: [], tiers: null };
 
@@ -116,30 +116,43 @@ const ERV = (() => {
   function renderGate(v) {
     $('#owner-chip').textContent = '';
     v.appendChild($('#tpl-gate').content.cloneNode(true));
-    const urlWrap = $('#gate-url-wrap'), urlInp = $('#gate-url'), msg = $('#gate-msg'), go = $('#gate-go');
+    const urlWrap = $('#gate-url-wrap'), urlInp = $('#gate-url'), msg = $('#gate-msg');
+    const buttons = [...v.querySelectorAll('[data-login]')];
     urlInp.value = API.store.url;
     urlWrap.hidden = !!(window.ERV_CONFIG && window.ERV_CONFIG.apiUrl) && !!API.store.url;
     if (S.loginError) { msg.textContent = '로그인하지 못했습니다: ' + S.loginError; S.loginError = ''; }
-    go.onclick = async () => {
-      const url = urlInp.value.trim();
-      if (!url) { msg.textContent = '서버 주소를 입력하세요.'; urlWrap.hidden = false; return; }
-      go.disabled = true; msg.textContent = '서버 확인 중...';
-      try {
-        const p = await API.ping(url);
-        if (!p || !p.ok || p.backend !== 'worker') throw new Error('ER Vision 서버 주소가 아닙니다.');
-        if (!p.loginReady) throw new Error('서버에 디스코드 로그인 설정이 아직 없습니다.');
-        API.store.url = url;
-        location.href = API.loginUrl();
-      } catch (e) { msg.textContent = '실패: ' + e.message; go.disabled = false; }
+    // 서버가 켜 둔 로그인 수단만 보인다
+    const check = async url => {
+      const p = await API.ping(url);
+      if (!p || !p.ok || p.backend !== 'worker') throw new Error('ER Vision 서버 주소가 아닙니다.');
+      if (!p.loginReady) throw new Error('서버에 로그인 설정이 아직 없습니다.');
+      return p.logins || { discord: true };
     };
+    if (API.store.url) check(API.store.url).then(l => buttons.forEach(b => { b.hidden = !l[b.dataset.login]; })).catch(() => {});
+    buttons.forEach(b => {
+      b.onclick = async () => {
+        const url = urlInp.value.trim();
+        if (!url) { msg.textContent = '서버 주소를 입력하세요.'; urlWrap.hidden = false; return; }
+        buttons.forEach(x => { x.disabled = true; }); msg.textContent = '서버 확인 중...';
+        try {
+          if (!(await check(url))[b.dataset.login]) throw new Error('서버에서 이 로그인 수단이 꺼져 있습니다.');
+          API.store.url = url;
+          location.href = API.loginUrl(b.dataset.login);
+        } catch (e) { msg.textContent = '실패: ' + e.message; buttons.forEach(x => { x.disabled = false; }); }
+      };
+    });
   }
 
   // #login=세션 (로그인 직후), #login_error=, ?api=서버주소 (공유 링크)를 읽고 주소창에서 지운다
   function readHashParams() {
-    const m = location.hash.match(/^#(login|login_error)=([^&]*)/);
+    const m = location.hash.match(/^#(login|login_error|linked)=([^&]*)/);
     if (m) {
-      if (m[1] === 'login') API.store.session = decodeURIComponent(m[2]); else S.loginError = decodeURIComponent(m[2]);
-      history.replaceState(null, '', location.pathname + location.search + '#/home');
+      const val = decodeURIComponent(m[2]);
+      if (m[1] === 'login') API.store.session = val;
+      else if (m[1] === 'linked') S.linked = val;
+      else S.loginError = val;
+      // 연결 결과는 내 계정 화면에서 보여 준다 (로그인돼 있으면 그 화면으로, 아니면 로그인 화면)
+      history.replaceState(null, '', location.pathname + location.search + (m[1] === 'login' ? '#/home' : '#/account'));
     }
     const a = location.hash.match(/[?&#]api=([^&]+)/);
     if (a) {

@@ -57,8 +57,9 @@ js/views/*.js       화면 하나당 파일 하나 (홈, 캐릭터, 전략, 조�
 js/features/*.js    기능 파일 (하나씩 격리, index.html 한 줄로 켜고 끔)
 js/vendor/chart.umd.js  Chart.js 4.4.1 (MIT)
 worker/src/index.js        요청 라우터, 1분 cron
-worker/src/auth.js         디스코드 로그인, 세션
+worker/src/auth.js         로그인(디스코드·구글), 로그인 수단 연결, 세션
 worker/src/collect.js      경기 수집 (내 경기, 정밀 분석 대기열, 최근 기록 분석)
+worker/src/guest.js        로그인 없는 최근 기록 조회 (방문자 횟수 제한)
 worker/src/user.js         계정 데이터 (복기노트, 리포트, 공유 링크, 사용량, 가져오기, 삭제)
 worker/src/store.js        D1 도우미, 잠금, 메타·시즌
 worker/src/er-api.js       게임 API 호출, 경기 정규화
@@ -69,7 +70,7 @@ worker/migrations/*.sql    D1 테이블 구조
 apps-script/*.gs           이전 데이터 창구 (구글 시트)
 tools/mock_server.py 개발용 가짜 데이터 창구 (Apps Script 흉내)
 tools/mock_er_api.py 개발용 가짜 게임 API (Worker 로컬 시험용)
-tools/mock_discord.py 개발용 가짜 디스코드 로그인
+tools/mock_discord.py 개발용 가짜 디스코드·구글 로그인
 ```
 
 ## 버전
