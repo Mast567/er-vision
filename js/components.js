@@ -95,12 +95,13 @@
   }
   function profileCard(nickname, stats) {
     // 이번 시즌 기록이 없으면(시즌 초 등) 가장 최근 시즌을 보여 준다
-    const curId = ((S.boot.seasons || []).find(s => s.current) || {}).id;
+    const R = ERV.ref();
+    const curId = ((R.seasons || []).find(s => s.current) || {}).id;
     const cur = (stats || []).find(s => s.seasonId === curId) || (stats || [])[0];
     const old = cur && cur.seasonId !== curId;
     const past = (stats || []).filter(s => s !== cur).slice(0, 3);
     const label = s => Analysis.seasonLabel(s.seasonName);
-    const t = cur ? Analysis.tierOf(cur.rp, cur.rank, S.boot.tiers) : null;
+    const t = cur ? Analysis.tierOf(cur.rp, cur.rank, R.tiers) : null;
     const tierText = !cur ? '랭크 기록 없음' : t && t.label ? t.label : t && t.below ? `${t.below.tier} ${t.below.div || ''} 미만`.trim() : '티어 기준표 없음';
     const head = el('div', { class: 'profile-main' }, [
       tierBadge(t),
@@ -116,7 +117,7 @@
     ].map(([k, v]) => el('div', {}, [el('div', { class: 'mu small' }, k), el('div', { class: 'num strong' }, v)]))) : null;
     const most = cur && (cur.characterStats || []).length ? el('div', { class: 'profile-most' }, [el('div', { class: 'mu small' }, '많이 한 캐릭터')].concat(
       cur.characterStats.slice().sort((a, b) => b.games - a.games).slice(0, 3).map(c => el('div', { class: 'most-row' }, [
-        el('span', {}, Analysis.charName(c.characterCode, S.boot.meta)), el('span', { class: 'mu num' }, `${c.games}판 · ${fmtN(c.avgRank)}등 · TOP3 ${c.games ? fmtP(c.top3 / c.games) : '-'}`)
+        el('span', {}, Analysis.charName(c.characterCode, R.meta)), el('span', { class: 'mu num' }, `${c.games}판 · ${fmtN(c.avgRank)}등 · TOP3 ${c.games ? fmtP(c.top3 / c.games) : '-'}`)
       ])))) : null;
     const prev = past.length ? el('div', { class: 'profile-past' }, past.map(s => el('span', { class: 'chip-past' }, `${label(s)} ${UI.fmtI(s.rp)} RP`))) : null;
     return el('section', { class: 'card profile' }, [head, nums, most, prev]);

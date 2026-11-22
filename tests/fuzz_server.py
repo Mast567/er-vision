@@ -277,6 +277,40 @@ class Run:
             http(self.W + '__scheduled?cron=*+*+*+*+*')
             self.check(not self.sql("SELECT key FROM kv WHERE key = 'old:x'"), '10단계: 만료된 kv가 지워지지 않음')
 
+            # 11단계: 로그인 없는 최근 기록 조회 (이름표는 결과에 나오는 것만, 전체 한도, 동시 1건, 캐시는 한도와 무관)
+            self.sql("INSERT INTO settings (key, value) VALUES ('names', '" + json.dumps({'characters': {str(i): f'캐릭{i}' for i in range(1, 120)}, 'areas': {str(i): f'지역{i}' for i in range(0, 40)}, 'weapons': {}, 'traits': {}, 'tactical': {}}) + "') ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+            guest = lambda **q: json.loads(http(self.W + '?' + urllib.parse.urlencode(dict(action='lookup', **q)))[2])
+            g = guest(nickname=nick_b)
+            if g['ok']:
+                d = g['data']
+                self.verify_games(d['games'], [x for x in self.mock('/__truth')[nick_b][:80] if x['matchingMode'] == 3][:30], '11단계 방문자 조회', need_detail=False)
+                used = {str(x['characterNum']) for x in d['games']} | {k for x in d['games'] for k in (x.get('killers') or {})} | {str(c['characterCode']) for st in d.get('seasonStats') or [] for c in st.get('characterStats') or []}
+                got = set(d['ref']['names']['characters'])
+                self.check(got <= used and got == {k for k in used if k.isdigit() and 1 <= int(k) < 120}, f'11단계: 방문자 이름표가 결과 범위와 다름 ({len(got)}개, 쓰인 것 {len(used)}개)')
+                self.check(set(d['ref']['meta']['characters']) <= used, '11단계: 방문자 meta가 결과 범위를 넘음')
+                self.check(isinstance(d['ref']['seasons'], list) and 'tiers' in d['ref'], '11단계: 방문자 기준 자료 빠짐')
+            else:
+                self.check('429' in g['error'] or '바빠서' in g['error'], f'11단계: 방문자 조회 실패 {g}')
+            for bad in ['bootstrap', 'deep', 'jobStatus', 'refresh']:
+                r = json.loads(http(self.W + '?action=' + bad + '&nickname=x')[2])
+                self.check(not r['ok'] and r.get('needLogin'), f'11단계: 로그인 없이 {bad}가 열림 {r}')
+            self.sql("DELETE FROM kv WHERE key = 'quick:" + nick_a.replace("'", "''") + "'")   # 9단계에서 캐시된 결과를 지워 실제 조회가 되게 한다
+            self.sql("INSERT INTO kv (key, value, expires) SELECT 'rl:guest-all:' || date('now', '+9 hours'), '300', 9999999999999 ON CONFLICT(key) DO UPDATE SET value = '300'")
+            g2 = guest(nickname=nick_a)
+            self.check(not g2['ok'] and '전체 조회량' in g2['error'], f'11단계: 방문자 전체 한도가 막지 않음 {g2}')
+            if g['ok']:
+                g3 = guest(nickname=nick_b)
+                self.check(g3['ok'] and g3['data']['cached'], f'11단계: 한도가 찬 뒤에도 캐시된 결과는 보여야 함 {g3.get("error")}')
+            self.sql("INSERT INTO kv (key, value, expires) VALUES ('lock:guest-lookup', '1', 9999999999999) ON CONFLICT(key) DO UPDATE SET expires = 9999999999999")
+            g4 = guest(nickname=nick_b)
+            self.check(not g4['ok'] and '다른 방문자' in g4['error'], f'11단계: 동시 조회 잠금이 동작하지 않음 {g4}')
+            self.sql("DELETE FROM kv WHERE key IN ('lock:guest-lookup') OR key LIKE 'rl:guest-all:%'")
+            if g['ok']:
+                self.check(self.sql("SELECT COUNT(*) AS n FROM kv WHERE key LIKE 'rl:guest:%' AND value = '1'")[0]['n'] == 1, '11단계: 방문자 횟수가 한 번만 세지지 않음')
+                self.sql("UPDATE kv SET value = '10' WHERE key LIKE 'rl:guest:%'")
+                g5 = guest(nickname=nick_a)
+                self.check(not g5['ok'] and '10회' in g5['error'], f'11단계: 방문자 IP 한도가 막지 않음 {g5}')
+
             counts = {n: len(mine(n, self.mock('/__truth'))) for n in (nick_a, nick_b, nick_c)}
             return {'seed': self.seed, 'games': counts, 'refresh': [n1, n2, n3], 'errors': [e1, e2, e3], 'apiCalls': self.mock('/__calls')['calls']}
         finally:

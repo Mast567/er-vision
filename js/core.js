@@ -2,8 +2,10 @@
    화면은 js/views/*.js 와 js/features/*.js 가 ERV.registerView 로 등록한다. */
 const ERV = (() => {
   const { $, el, toast, killCharts } = UI;
-  const VERSION = 'v0.5';
-  const S = { boot: null, games: [], mode: 3, season: 'all', seasonStats: null, lookup: null, lookupPending: null, lookupRange: 30, loginError: '' };
+  const VERSION = 'v0.6';
+  const S = { boot: null, games: [], mode: 3, season: 'all', seasonStats: null, lookup: null, lookupPending: null, lookupRange: 30, loginError: '', guestRef: null };
+  // 기준 자료(meta, seasons, tiers): 로그인하면 bootstrap, 로그인 없이 조회하면 조회 결과에 붙어 온 것
+  const ref = () => S.boot || S.guestRef || { meta: null, seasons: [], tiers: null };
 
   // ---- 화면 등록. def: { id, label, order, filters(모드·시즌 선택 표시), hidden(메뉴에 없음), public(로그인 불필요), render(v, param) }
   const registry = [];
@@ -154,7 +156,7 @@ const ERV = (() => {
     route();
   });
 
-  return { VERSION, S, Analysis, registerView, route, filtered, seasonName, loadBoot, handleErr, refreshGames, isCobalt, hasRp };
+  return { VERSION, S, Analysis, registerView, route, ref, filtered, seasonName, loadBoot, handleErr, refreshGames, isCobalt, hasRp };
 })();
 
 // 기능 파일(js/features/*.js)이 window.ERV 로 찾는다

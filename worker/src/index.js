@@ -7,10 +7,11 @@ import { DATA_V } from './er-api.js';
 import { makeCtx, withLock, settings, seasonStats, lookupUid, refreshMeta } from './store.js';
 import { ownerUid, ownerRefresh, pendingOwner, workJob, deepLookup, jobStatus, quickLookup } from './collect.js';
 import { quota, claimLegacy, deleteAccount, importData, bootstrap, saveTiers } from './user.js';
+import { guestLookup } from './guest.js';
 import './features/companions.js';
 import './features/notes.js';
 
-const VERSION = 'v0.5';
+const VERSION = 'v0.6';
 const OWNER_REFRESH_MS = 6 * 3600 * 1000;
 const META_REFRESH_MS = 24 * 3600 * 1000;
 const MAX_SEASONS = 8;
@@ -29,16 +30,16 @@ async function handle(request, env) {
   if (ext.publicActions[action]) return ext.publicActions[action](ctx, p);
 
   const u = await sessionUser(ctx.db, request, p);
-  if (!u) return fail('로그인이 필요합니다.', { needLogin: true });
-  ctx.user = u;
   const nick = String(p.nickname || '').trim();
+  if (!u) return action === 'lookup' ? guestLookup(ctx, request, nick) : fail('로그인이 필요합니다.', { needLogin: true });
+  ctx.user = u;
   const admin = () => { if (!u.is_admin) throw new Error('관리자만 쓸 수 있습니다.'); };
   switch (action) {
     case 'bootstrap': return bootstrap(ctx, u);
     case 'seasonStats': return okObj(u.nickname ? await seasonStats(ctx, await ownerUid(ctx, u), Math.min(Math.max(toInt(p.limit, MAX_SEASONS), 1), MAX_SEASONS)) : []);
     case 'refresh':
       return okObj(await withLock(ctx, 'owner:' + u.id, 90000, () => ownerRefresh(ctx, u), async () => ({ added: 0, remaining: await pendingOwner(ctx, u), busy: true })));
-    case 'lookup': return quickLookup(ctx, nick, quota(ctx, u, 'quick'));
+    case 'lookup': return okObj(await quickLookup(ctx, nick, quota(ctx, u, 'quick')));
     case 'deep': return deepLookup(ctx, nick, p.force === '1' || p.force === true, quota(ctx, u, 'deep'));
     case 'jobStatus': return jobStatus(ctx, nick);
     case 'import': return okObj(await importData(ctx, u, String(p.kind || ''), p.items, { needDetail: p.needDetail === true || p.needDetail === '1' }));

@@ -214,10 +214,11 @@ export async function jobStatus(ctx, nick) {
 }
 
 // ---- 최근 기록 분석: 상세 없이 약 50판, 10분 캐시
+// 결과는 객체로 돌려준다 (로그인한 사람과 방문자가 응답에 붙이는 것이 다르다)
 export async function quickLookup(ctx, nick, guard) {
   if (!nick) throw new Error('닉네임을 입력하세요.');
   const cached = await kvGet(ctx, 'quick:' + nick);
-  if (cached) { const c = JSON.parse(cached); c.cached = true; return okObj(c); }
+  if (cached) return Object.assign(JSON.parse(cached), { cached: true });
   if (guard) await guard.check();
   let uid = await lookupUid(ctx, nick);
   const games = [];
@@ -232,8 +233,8 @@ export async function quickLookup(ctx, nick, guard) {
   const cur = (await seasons(ctx).catch(() => [])).find(s => s.current);
   let stats = [];
   try { stats = await seasonStats(ctx, uid, 4); } catch { /* 없어도 된다 */ }
-  const raw = JSON.stringify({ nickname: nick, uid, mode: 'quick', games, seasonStats: stats, currentSeasonId: cur ? cur.id : null, fetchedAt: new Date().toISOString(), cached: false });
-  await kvPut(ctx, 'quick:' + nick, raw, 600);
+  const data = { nickname: nick, uid, mode: 'quick', games, seasonStats: stats, currentSeasonId: cur ? cur.id : null, fetchedAt: new Date().toISOString(), cached: false };
+  await kvPut(ctx, 'quick:' + nick, JSON.stringify(data), 600);
   if (guard) await guard.commit();
-  return okRaw(raw);
+  return data;
 }

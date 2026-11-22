@@ -1,4 +1,5 @@
-/* 조회: 닉네임 최근 기록(랭크 30판)과 정밀 분석(90일, 서버 대기열). 결과는 조회한 사람에게만 보인다. */
+/* 조회: 닉네임 최근 기록(랭크 30판)과 정밀 분석(90일, 서버 대기열). 결과는 조회한 사람에게만 보인다.
+   최근 기록은 로그인 없이도 쓸 수 있다(서버가 방문자 하루 횟수를 센다). 정밀 분석은 로그인해야 한다. */
 (() => {
   const { el, fmtP, fmtN, fmtI } = UI;
   const { S, handleErr } = ERV;
@@ -14,7 +15,8 @@
   // 분석 범위: 최근 10판 / 30판 (정밀 분석은 90일 전체도). 서버는 최근 기록을 30판까지 준다.
   const RANGES = [[10, '최근 10판'], [30, '최근 30판']];
   function result(data, rerender) {
-    const all = Analysis.enrich(data.games || [], S.boot.meta, S.boot.seasons);
+    const R = ERV.ref();
+    const all = Analysis.enrich(data.games || [], R.meta, R.seasons);
     const ranges = data.mode === 'deep' ? RANGES.concat([['all', `90일 전체 (${all.length}판)`]]) : RANGES;
     if (!ranges.some(([v]) => v === S.lookupRange)) S.lookupRange = 30;
     const G = S.lookupRange === 'all' ? all : all.slice(-S.lookupRange);
@@ -36,7 +38,8 @@
   }
 
   function render(v) {
-    v.appendChild(el('div', { class: 'page-head' }, [el('h1', {}, '조회'), el('span', { class: 'mu' }, '결과는 조회한 나에게만 보입니다')]));
+    const guest = !S.boot;
+    v.appendChild(el('div', { class: 'page-head' }, [el('h1', {}, '조회'), el('span', { class: 'mu' }, guest ? '로그인 없이 최근 기록을 볼 수 있습니다 · 결과는 조회한 나에게만 보입니다' : '결과는 조회한 나에게만 보입니다')]));
     const inp = el('input', { type: 'text', placeholder: '게임 닉네임', class: 'nick-input' });
     inp.value = S.lookupPending || (S.lookup ? S.lookup.nickname : '');
     const quick = el('button', { class: 'btn primary' }, '최근 기록'), deep = el('button', { class: 'btn' }, '정밀 분석');
@@ -44,11 +47,16 @@
     v.appendChild(H.card(null, [
       el('div', { class: 'row' }, [inp, quick, deep]),
       el('p', { class: 'mu small' }, '최근 기록: 최근 랭크 30판을 몇 초 안에 보여줍니다(팀원·로비 RP 제외). 정밀 분석: 90일 전체와 경기별 상세를 모읍니다. 처음 보는 닉네임은 몇 분 걸리고, 이후에는 새 경기만 더합니다.'),
+      guest ? el('p', { class: 'mu small' }, '로그인 없이는 하루 10회까지 조회할 수 있고, 10분 안에 누군가 조회한 닉네임은 횟수에 들어가지 않습니다. 정밀 분석은 로그인해야 합니다.') : null,
       status
     ]));
     v.appendChild(out);
     const busy = b => { quick.disabled = deep.disabled = b; };
-    const show = data => { S.lookup = data; out.innerHTML = ''; UI.killCharts(); result(data, () => show(data)).forEach(n => out.appendChild(n)); };
+    const show = data => {
+      // 방문자 결과에는 그 결과에 필요한 이름표와 기준 자료가 붙어 온다
+      if (!S.boot && data.ref) { S.guestRef = data.ref; Analysis.setNames(data.ref.names); }
+      S.lookup = data; out.innerHTML = ''; UI.killCharts(); result(data, () => show(data)).forEach(n => out.appendChild(n));
+    };
 
     // 정밀 분석 진행률: 앞 요청이 끝나야 다음 요청을 보낸다. 화면을 떠나면 멈추고, 돌아오면 이어 간다.
     let pollId = 0;
@@ -81,6 +89,7 @@
     };
     deep.onclick = async () => {
       const nick = inp.value.trim(); if (!nick) return;
+      if (guest) { status.innerHTML = ''; status.append('정밀 분석은 로그인한 뒤 쓸 수 있습니다. ', el('a', { href: '#/home' }, '로그인하러 가기')); return; }
       busy(true); status.textContent = '정밀 분석 요청 중...';
       try {
         const d = await API.get('deep', { nickname: nick });
@@ -93,5 +102,5 @@
     else if (S.lookup) show(S.lookup);
   }
 
-  ERV.registerView({ id: 'lookup', label: '조회', order: 40, render });
+  ERV.registerView({ id: 'lookup', label: '조회', order: 40, public: true, render });
 })();
