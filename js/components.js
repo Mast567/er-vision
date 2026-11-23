@@ -16,6 +16,10 @@
   // 10판 미만은 글자만 흐리게 한다. 표 위에 '흐리게 = 10판 미만' 안내를 둔다
   const sample = n => el('span', { class: 'sample' + (n < MIN_N ? ' low' : ''), title: n < MIN_N ? `${MIN_N}판 미만이라 참고만 하세요` : null }, `${n}판`);
 
+  // 캐릭터 그림 (팬킷 기본 일러스트의 얼굴 부분, img/chars/{캐릭터 번호}.webp). 그림이 없는 캐릭터는 이름만 보인다
+  const charIcon = (code, size = 24) => code == null ? null : el('img', { class: 'char-icon', src: `img/chars/${code}.webp`, alt: '', width: size, height: size, loading: 'lazy', onerror: e => e.target.remove() });
+  const charLabel = (code, name, extra) => el('span', { class: 'char-label' }, [charIcon(code), el('span', {}, [name, extra || null])]);
+
   function tile(label, value, sub) {
     return el('div', { class: 'tile' }, [el('div', { class: 'tile-label' }, label), el('div', { class: 'tile-value' }, value), sub ? el('div', { class: 'tile-sub' }, sub) : null]);
   }
@@ -49,7 +53,7 @@
   function statTable(rows, label, extra = [], mode = S.mode) {
     if (!rows.length) return empty('아직 기록이 없습니다.');
     const m = metric(mode);
-    const cols = [[label, r => r.key], ['판수', r => sample(r.n)], [m.label, m.cell]];
+    const cols = [[label, r => r.charCode != null ? charLabel(r.charCode, r.key) : r.key], ['판수', r => sample(r.n)], [m.label, m.cell]];
     if (m.key !== 'avgRank') cols.push(['평균 등수', r => fmtN(r.avgRank)]);
     cols.push(mode === 6 ? ['K/D', r => fmtN(r.kd)] : ['TOP3', r => fmtP(r.top3Rate)]);
     const all = cols.concat(extra);
@@ -69,9 +73,9 @@
     list.forEach(g => {
       const cells = [g.startDtm.slice(5, 16)]
         .concat(showMode ? [g.modeName] : [])
-        .concat([el('span', {}, [g.charName, g.weaponName ? el('span', { class: 'mu' }, ' · ' + g.weaponName) : null]), rankBadge(g), `${g.kills}/${g.assists}/${g.deaths}`, fmtN(g.surviveMin, 1) + '분'])
+        .concat([charLabel(g.characterNum, g.charName, g.weaponName ? el('span', { class: 'mu' }, ' · ' + g.weaponName) : null), rankBadge(g), `${g.kills}/${g.assists}/${g.deaths}`, fmtN(g.surviveMin, 1) + '분'])
         .concat(rp ? [g.mode === 3 ? signed(g.rpChange, 0) : '-'] : [])
-        .concat([g.startAreaName || '-', g.killerText || '-'])
+        .concat([g.startAreaName || '-', g.killers.length ? charLabel(g.killers[0].code, g.killerText) : '-'])
         .concat(rp ? [g.teamAvgRp != null ? `${g.teamAvgRp} / ${g.lobbyAvgRp}` : '-'] : [[g.mate1, g.mate2, g.mate3].filter(Boolean).join(', ') || '-']);
       const tr = el('tr', { class: (onClick ? 'clickable' : '') + (opts.selected === g.gameId ? ' selected' : '') }, cells.map(c => el('td', {}, c)));
       if (onClick) tr.onclick = () => onClick(g);
@@ -119,7 +123,7 @@
     ].map(([k, v]) => el('div', {}, [el('div', { class: 'mu small' }, k), el('div', { class: 'num strong' }, v)]))) : null;
     const most = cur && (cur.characterStats || []).length ? el('div', { class: 'profile-most' }, [el('div', { class: 'mu small' }, '많이 한 캐릭터')].concat(
       cur.characterStats.slice().sort((a, b) => b.games - a.games).slice(0, 3).map(c => el('div', { class: 'most-row' }, [
-        el('span', {}, Analysis.charName(c.characterCode, R.meta)), el('span', { class: 'mu num' }, `${c.games}판 · ${fmtN(c.avgRank)}등 · TOP3 ${c.games ? fmtP(c.top3 / c.games) : '-'}`)
+        charLabel(c.characterCode, Analysis.charName(c.characterCode, R.meta)), el('span', { class: 'mu num' }, `${c.games}판 · ${fmtN(c.avgRank)}등 · TOP3 ${c.games ? fmtP(c.top3 / c.games) : '-'}`)
       ])))) : null;
     const prev = past.length ? el('div', { class: 'profile-past' }, past.map(s => el('span', { class: 'chip-past' }, `${label(s)} ${UI.fmtI(s.rp)} RP`))) : null;
     return el('section', { class: 'card profile' }, [head, nums, most, prev]);
@@ -142,7 +146,7 @@
       data: { labels: asc.map(label), datasets: [{ data: asc.map(s => s.rp), backgroundColor: UI.css('--ac'), borderRadius: 3, maxBarThickness: 40 }] },
       options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => UI.fmtI(c.raw) + ' RP' } } }, scales: { x: { ticks: { maxRotation: 0, autoSkip: true } } } }
     }));
-    const most = s => { const c = (s.characterStats || []).slice().sort((a, b) => b.games - a.games)[0]; return c ? `${Analysis.charName(c.characterCode, R.meta)} · ${c.games}판` : '-'; };
+    const most = s => { const c = (s.characterStats || []).slice().sort((a, b) => b.games - a.games)[0]; return c ? charLabel(c.characterCode, Analysis.charName(c.characterCode, R.meta), el('span', { class: 'mu' }, ` · ${c.games}판`)) : '-'; };
     // [제목, 값, 숫자 칸]
     const cols = [['시즌', s => label(s)], ['티어', s => tierCell(Analysis.tierOf(s.rp, s.rank, R.tiers))], ['RP', s => UI.fmtI(s.rp), 1],
       ['순위', s => s.rank ? `${UI.fmtI(s.rank)}위 · 상위 ${s.rankPercent != null ? (s.rankPercent * 100).toFixed(1) + '%' : '-'}` : '-'],
@@ -156,5 +160,5 @@
     return card(null, [box.wrap, table].concat(notes.map(t => el('p', { class: 'mu small' }, t))));
   }
 
-  ERV.helpers = { el, esc, fmtP, fmtN, fmtS, signed, tile, finding, card, empty, group, segmented, sample, rankBadge, statTable, gamesTable, rpStrip, metric, rankRows, profileCard, seasonHistoryCard, filtered: ERV.filtered, isCobalt: ERV.isCobalt, hasRp: ERV.hasRp, toast: UI.toast };
+  ERV.helpers = { el, esc, fmtP, fmtN, fmtS, signed, tile, finding, card, empty, group, segmented, sample, rankBadge, statTable, gamesTable, rpStrip, metric, rankRows, profileCard, seasonHistoryCard, charIcon, charLabel, filtered: ERV.filtered, isCobalt: ERV.isCobalt, hasRp: ERV.hasRp, toast: UI.toast };
 })();

@@ -28,7 +28,7 @@ const Analysis = (() => {
       const d = new Date(String(g.startDtm).replace(' ', 'T'));
       const mode = g.mode == null ? 3 : Number(g.mode);
       const seasonId = (g.seasonId && g.seasonId > 0) ? g.seasonId : seasonByDate(d, seasons);
-      const killers = Object.entries(g.killers || {}).map(([code, n]) => ({ name: charName(code, meta), n: Number(n) || 0 })).sort((a, b) => b.n - a.n);
+      const killers = Object.entries(g.killers || {}).map(([code, n]) => ({ code: Number(code), name: charName(code, meta), n: Number(n) || 0 })).sort((a, b) => b.n - a.n);
       const rpChange = Number(g.rpChange) || 0;
       return Object.assign({}, g, {
         mode, modeName: MODE_NAME[mode] || ('모드' + mode), seasonId,
@@ -82,8 +82,10 @@ const Analysis = (() => {
   // 판수 충분한 묶음을 먼저, 그 안에서 판당 RP 순
   const byRpFirst = (a, b) => (a.low - b.low) || ((b.avgRp ?? -1e9) - (a.avgRp ?? -1e9)) || (b.n - a.n);
   const byCount = (a, b) => b.n - a.n;
-  const byCharacter = G => groupBy(G, g => g.charName).sort(byRpFirst);
-  const byCharWeapon = G => groupBy(G, g => g.weaponName ? `${g.charName} · ${g.weaponName}` : g.charName).sort(byRpFirst);
+  // 캐릭터 묶음에는 그림을 붙일 수 있게 캐릭터 번호(charCode)를 같이 둔다
+  const withChar = rows => rows.map(r => Object.assign(r, { charCode: r.games[0].characterNum }));
+  const byCharacter = G => withChar(groupBy(G, g => g.charName)).sort(byRpFirst);
+  const byCharWeapon = G => withChar(groupBy(G, g => g.weaponName ? `${g.charName} · ${g.weaponName}` : g.charName)).sort(byRpFirst);
   const byCore = G => groupBy(G, g => g.coreName).sort(byRpFirst);
   const byTactical = G => groupBy(G, g => g.tacticalName).sort(byRpFirst);
   const byStartArea = G => groupBy(G, g => g.startAreaName).sort(byRpFirst);
@@ -94,7 +96,7 @@ const Analysis = (() => {
   // 나를 잡은 캐릭터: 한 판에 여러 번 죽으면 각 캐릭터에 그 판을 넣는다
   function byKiller(G) {
     const m = new Map();
-    G.forEach(g => (g.killers || []).forEach(k => { if (!m.has(k.name)) m.set(k.name, { key: k.name, times: 0, games: [] }); const r = m.get(k.name); r.times += k.n; r.games.push(g); }));
+    G.forEach(g => (g.killers || []).forEach(k => { if (!m.has(k.name)) m.set(k.name, { key: k.name, charCode: k.code, times: 0, games: [] }); const r = m.get(k.name); r.times += k.n; r.games.push(g); }));
     return [...m.values()].map(r => Object.assign(r, summary(r.games))).sort((a, b) => b.times - a.times);
   }
   function bySessionIndex(G) {
@@ -150,7 +152,7 @@ const Analysis = (() => {
   }
   // API 시즌 이름 → 게임 안 이름. 게임 언어 파일 기준 Season10 = 시즌 1, Season21 = 시즌 12, Season1~9 = EA 시즌
   function seasonLabel(name) {
-    const m = String(name || '').match(/^(Pre-)?Season(\d+)$/);
+    const m = String(name || '').match(/^(Pre-)?\s*Season\s*(\d+)$/i);   // 첫 시즌만 'Season 1'처럼 띄어 쓴다
     if (!m) return String(name || '');
     const n = Number(m[2]), base = n >= 10 ? `시즌 ${n - 9}` : `EA 시즌 ${n}`;
     return m[1] ? base + ' 프리 시즌' : base;

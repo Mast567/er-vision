@@ -17,7 +17,7 @@
         ['나를 잡은 캐릭터', g.killers.map(k => `${k.name}${k.n > 1 ? ' ×' + k.n : ''}`).join(', ') || '-']]],
       ['팀', [['팀원', [g.mate1, g.mate2, g.mate3].filter(Boolean).join(', ') || '-']].concat(ranked ? [['팀 / 로비 평균 RP', g.teamAvgRp != null ? `${g.teamAvgRp} / ${g.lobbyAvgRp}` : '-']] : [], [['경기 ID', String(g.gameId)]])]
     ];
-    const head = el('div', { class: 'detail-head' }, [H.rankBadge(g), el('b', {}, g.charName + (g.weaponName ? ' · ' + g.weaponName : '')), ranked ? el('span', { class: 'detail-rp' }, [signed(g.rpChange, 0), ' RP']) : null]);
+    const head = el('div', { class: 'detail-head' }, [H.rankBadge(g), H.charIcon(g.characterNum, 40), el('b', {}, g.charName + (g.weaponName ? ' · ' + g.weaponName : '')), ranked ? el('span', { class: 'detail-rp' }, [signed(g.rpChange, 0), ' RP']) : null]);
     return H.card('경기 자세히', [head, el('div', { class: 'detail-grid' }, blocks.map(([t, rows]) => el('div', { class: 'detail-block' }, [
       el('h3', {}, t), el('dl', { class: 'info' }, rows.flatMap(([k, val]) => [el('dt', {}, k), el('dd', {}, val)]))
     ])))], { note: '경기 ID로 게임 안에서 리플레이를 찾을 수 있습니다' });
