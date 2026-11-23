@@ -153,5 +153,5 @@
     v.appendChild(el('div', { class: 'stack narrow' }, [accountCard(), nicknameCard(), loginsCard(), themeCard(), tiersCard(), legacyCard(), backupCard(), privacyCard()]));
   }
 
-  ERV.registerView({ id: 'account', label: '내 계정', short: '계정', order: 90, render });
+  ERV.registerView({ id: 'account', label: '내 계정', order: 90, render });
 })();

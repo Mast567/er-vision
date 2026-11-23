@@ -55,7 +55,6 @@ p { margin: 8px 0 0; }
 .nav a { color: var(--mu); padding: 7px 12px; border-radius: 6px; white-space: nowrap; }
 .nav a:hover { color: var(--tx); background: var(--sf2); }
 .nav a.active { color: var(--tx); background: var(--sf2); font-weight: 700; }
-.nav-short { display: none; }
 .topbar-right { display: flex; align-items: center; gap: 8px; }
 .filters-bar { display: flex; gap: 6px; }
 .chip { color: var(--mu); font-size: 12px; white-space: nowrap; }
@@ -253,32 +252,4 @@ dl.info dd { margin: 0; overflow-wrap: anywhere; }
   .bar-row { grid-template-columns: 36px 1fr 96px; }
   .profile-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .site-foot { padding: 12px 16px 0; }
-  .grid.kpi.k4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .grid.kpi.k3 .tile-value { font-size: 17px; }
-  .grid.kpi.k3 .tile { padding: 10px; }
-
-  /* 메뉴는 화면 아래 고정 (엄지로 누르기 쉽고, 위쪽 공간을 덜 쓴다) */
-  body { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
-  .nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0;
-    background: var(--sf); border-top: 1px solid var(--ln); padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); overflow: visible; flex-basis: auto; order: 0; }
-  .nav a { display: grid; place-items: center; min-height: 48px; padding: 0 2px; font-size: 12px; border-radius: 8px; }
-  .nav a.active { color: var(--ac); background: var(--sf2); }
-  .nav-full { display: none; }
-  .nav-short { display: inline; }
-  .toast { bottom: calc(76px + env(safe-area-inset-bottom)); right: 12px; }
-
-  /* 경기 표 → 두 줄 카드: [등수] 캐릭터 ··· RP / 일시 ··· K/A/D */
-  .tbl.games thead { display: none; }
-  .tbl.games tr { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; grid-template-areas: "rank char rp" "rank date kda"; align-items: center; column-gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--ln); }
-  .tbl.games tr:last-child { border-bottom: 0; }
-  .tbl.games td { padding: 0; border: 0; }
-  .tbl.games .g-rank { grid-area: rank; }
-  .tbl.games .g-char { grid-area: char; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
-  .tbl.games .g-rp { grid-area: rp; text-align: right; font: 700 14px var(--mono); }
-  .tbl.games .g-date { grid-area: date; color: var(--mu); font-size: 12px; }
-  .tbl.games .g-kda { grid-area: kda; text-align: right; color: var(--mu); font: 12px var(--mono); }
-  .tbl.games .g-mode, .tbl.games .g-surv, .tbl.games .g-area, .tbl.games .g-killer, .tbl.games .g-team { display: none; }
-  .detail-grid { grid-template-columns: 1fr; }
-  .tbl.seasons .s-wins, .tbl.seasons .s-avg, .tbl.seasons .s-most, .tbl.seasons .rank-n { display: none; }
-  .tbl.seasons th, .tbl.seasons td { padding: 8px; }
 }

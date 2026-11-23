@@ -158,5 +158,5 @@
     list(); detail();
   }
 
-  registerView({ id: 'companions', label: '같이 한 사람들', short: '같이', order: 35, filters: true, render });
+  registerView({ id: 'companions', label: '같이 한 사람들', order: 35, filters: true, render });
 })();

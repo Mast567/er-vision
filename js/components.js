@@ -64,20 +64,16 @@
   function gamesTable(list, onClick, opts = {}) {
     const mode = opts.mode ?? S.mode;
     const showMode = mode === 'all', rp = mode === 3 || mode === 'all';
-    // [칸 이름, 제목, 값]. 칸 이름(g-...)으로 휴대폰에서 두 줄 카드로 배치한다 (css/style.css)
-    const cols = [['date', '일시', g => g.startDtm.slice(5, 16)]]
-      .concat(showMode ? [['mode', '모드', g => g.modeName]] : [])
-      .concat([
-        ['char', '캐릭터', g => el('span', {}, [g.charName, g.weaponName ? el('span', { class: 'mu' }, ' · ' + g.weaponName) : null])],
-        ['rank', '등수', rankBadge], ['kda', 'K/A/D', g => `${g.kills}/${g.assists}/${g.deaths}`], ['surv', '생존', g => fmtN(g.surviveMin, 1) + '분']
-      ])
-      .concat(rp ? [['rp', 'RP', g => g.mode === 3 ? signed(g.rpChange, 0) : '-']] : [])
-      .concat([['area', '시작 지역', g => g.startAreaName || '-'], ['killer', '나를 잡은 캐릭터', g => g.killerText || '-']])
-      .concat(rp ? [['team', '팀 / 로비 RP', g => g.teamAvgRp != null ? `${g.teamAvgRp} / ${g.lobbyAvgRp}` : '-']] : [['team', '팀원', g => [g.mate1, g.mate2, g.mate3].filter(Boolean).join(', ') || '-']]);
-    const head = cols.map(c => c[1]);
+    const head = ['일시'].concat(showMode ? ['모드'] : [], ['캐릭터', '등수', 'K/A/D', '생존'], rp ? ['RP'] : [], ['시작 지역', '나를 잡은 캐릭터'], rp ? ['팀 / 로비 RP'] : ['팀원']);
     const tbody = el('tbody');
     list.forEach(g => {
-      const tr = el('tr', { class: (onClick ? 'clickable' : '') + (opts.selected === g.gameId ? ' selected' : '') }, cols.map(([k, , f]) => el('td', { class: 'g-' + k }, f(g))));
+      const cells = [g.startDtm.slice(5, 16)]
+        .concat(showMode ? [g.modeName] : [])
+        .concat([el('span', {}, [g.charName, g.weaponName ? el('span', { class: 'mu' }, ' · ' + g.weaponName) : null]), rankBadge(g), `${g.kills}/${g.assists}/${g.deaths}`, fmtN(g.surviveMin, 1) + '분'])
+        .concat(rp ? [g.mode === 3 ? signed(g.rpChange, 0) : '-'] : [])
+        .concat([g.startAreaName || '-', g.killerText || '-'])
+        .concat(rp ? [g.teamAvgRp != null ? `${g.teamAvgRp} / ${g.lobbyAvgRp}` : '-'] : [[g.mate1, g.mate2, g.mate3].filter(Boolean).join(', ') || '-']);
+      const tr = el('tr', { class: (onClick ? 'clickable' : '') + (opts.selected === g.gameId ? ' selected' : '') }, cells.map(c => el('td', {}, c)));
       if (onClick) tr.onclick = () => onClick(g);
       tbody.appendChild(tr);
     });
@@ -147,14 +143,13 @@
       options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => UI.fmtI(c.raw) + ' RP' } } }, scales: { x: { ticks: { maxRotation: 0, autoSkip: true } } } }
     }));
     const most = s => { const c = (s.characterStats || []).slice().sort((a, b) => b.games - a.games)[0]; return c ? `${Analysis.charName(c.characterCode, R.meta)} · ${c.games}판` : '-'; };
-    // [칸 이름, 제목, 값, 숫자 칸]. 휴대폰에서는 s-wins·s-avg·s-most 칸을 숨긴다 (css/style.css)
-    const cols = [['season', '시즌', s => label(s)], ['tier', '티어', s => tierCell(Analysis.tierOf(s.rp, s.rank, R.tiers))], ['rp', 'RP', s => UI.fmtI(s.rp), 1],
-      ['rank', '순위', s => s.rank ? el('span', {}, [el('span', { class: 'rank-n' }, `${UI.fmtI(s.rank)}위 · `), `상위 ${s.rankPercent != null ? (s.rankPercent * 100).toFixed(1) + '%' : '-'}`]) : '-'],
-      ['games', '판수', s => UI.fmtI(s.games), 1], ['wins', '1등', s => UI.fmtI(s.wins), 1], ['avg', '평균 등수', s => fmtN(s.avgRank), 1], ['top3', 'TOP3', s => fmtP(s.top3), 1], ['most', '많이 한 캐릭터', most]];
-    const cls = ([k, , , n]) => 's-' + k + (n ? ' num' : '');
+    // [제목, 값, 숫자 칸]
+    const cols = [['시즌', s => label(s)], ['티어', s => tierCell(Analysis.tierOf(s.rp, s.rank, R.tiers))], ['RP', s => UI.fmtI(s.rp), 1],
+      ['순위', s => s.rank ? `${UI.fmtI(s.rank)}위 · 상위 ${s.rankPercent != null ? (s.rankPercent * 100).toFixed(1) + '%' : '-'}` : '-'],
+      ['판수', s => UI.fmtI(s.games), 1], ['1등', s => UI.fmtI(s.wins), 1], ['평균 등수', s => fmtN(s.avgRank), 1], ['TOP3', s => fmtP(s.top3), 1], ['많이 한 캐릭터', most]];
     const table = el('div', { class: 'tbl-wrap' }, el('table', { class: 'tbl seasons' }, [
-      el('thead', {}, el('tr', {}, cols.map(c => el('th', { class: cls(c) }, c[1])))),
-      el('tbody', {}, items.map(s => el('tr', {}, cols.map(c => el('td', { class: cls(c) }, c[2](s))))))
+      el('thead', {}, el('tr', {}, cols.map(c => el('th', { class: c[2] ? 'num' : '' }, c[0])))),
+      el('tbody', {}, items.map(s => el('tr', {}, cols.map(c => el('td', { class: c[2] ? 'num' : '' }, c[1](s))))))
     ]));
     const notes = [`랭크 기록이 있는 ${items.length}개 시즌${data.empty ? ` (기록 없는 시즌 ${data.empty}개는 뺐습니다)` : ''}.`, '티어는 지금 시즌의 티어 기준표로 계산해서, 그 시즌의 실제 티어와 다를 수 있습니다.'];
     if (data.partial) notes.unshift('아직 받지 못한 시즌이 있습니다. 잠시 뒤 다시 열면 이어서 받습니다.');
