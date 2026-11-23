@@ -87,25 +87,55 @@ export async function seasons(ctx) {
   await kvPut(ctx, 'seasons', JSON.stringify(out), 21600);
   return out;
 }
-export async function seasonStats(ctx, uid, limit) {
-  const key = 'sst:' + uid + ':' + limit;
-  const cached = await kvGet(ctx, key);
-  if (cached) return JSON.parse(cached);
-  // 프리 시즌(일주일 남짓)은 빼고 정규 시즌만 센다. 빼지 않으면 시즌 초에 개수 한도를 프리 시즌이 차지한다.
-  const list = (await seasons(ctx)).filter(s => s.id > 0 && !/^Pre-/i.test(String(s.name))).sort((a, b) => b.id - a.id).slice(0, limit);
-  const out = [];
-  for (const s of list) {
-    try {
-      const u = ((await ctx.api.get(`/v2/user/stats/uid/${uid}/${s.id}/${RANKED_MODE}`)).userStats || [])[0];
-      if (u) out.push({
-        seasonId: s.id, seasonName: s.name, rp: u.mmr, rank: u.rank, rankSize: u.rankSize, rankPercent: u.rankPercent,
-        games: u.totalGames, wins: u.totalWins, avgRank: u.averageRank, top3: u.top3, avgKills: u.averageKills, avgAssists: u.averageAssistants,
-        characterStats: (u.characterStats || []).map(c => ({ characterCode: c.characterCode, games: c.totalGames, wins: c.wins, top3: c.top3, avgRank: c.averageRank }))
-      });
-    } catch (e) { if (e.budget) break; }
-  }
-  await kvPut(ctx, key, JSON.stringify(out), 3600);
+// ---- 공식 시즌 통계 (랭크). 시즌마다 따로 저장한다: 끝난 시즌은 바뀌지 않으므로 30일, 이번 시즌은 1시간.
+// 기록이 없는 시즌도 null로 저장해 다시 묻지 않는다. 프리 시즌(일주일 남짓)은 뺀다.
+const PAST_SEASON_TTL = 30 * 86400, CURRENT_SEASON_TTL = 3600;
+const statKey = (uid, sid) => `ss:${uid}:${sid}`;
+export const regularSeasons = async ctx => (await seasons(ctx)).filter(s => s.id > 0 && !/^Pre-/i.test(String(s.name))).sort((a, b) => b.id - a.id);
+
+async function fetchSeasonStat(ctx, uid, s) {
+  const u = ((await ctx.api.get(`/v2/user/stats/uid/${uid}/${s.id}/${RANKED_MODE}`)).userStats || [])[0];
+  const out = u ? {
+    seasonId: s.id, seasonName: s.name, rp: u.mmr, rank: u.rank, rankSize: u.rankSize, rankPercent: u.rankPercent,
+    games: u.totalGames, wins: u.totalWins, avgRank: u.averageRank, top3: u.top3, avgKills: u.averageKills, avgAssists: u.averageAssistants,
+    characterStats: (u.characterStats || []).map(c => ({ characterCode: c.characterCode, games: c.totalGames, wins: c.wins, top3: c.top3, avgRank: c.averageRank }))
+  } : null;
+  await kvPut(ctx, statKey(uid, s.id), JSON.stringify(out), s.current ? CURRENT_SEASON_TTL : PAST_SEASON_TTL);
   return out;
+}
+async function cachedSeasonStats(ctx, uid, list) {
+  if (!list.length) return new Map();
+  const rows = (await ctx.db.prepare(`SELECT key, value FROM kv WHERE key IN (${placeholders(list.length)}) AND expires > ?`).bind(...list.map(s => statKey(uid, s.id)), Date.now()).all()).results;
+  return new Map(rows.map(r => [Number(r.key.split(':')[2]), JSON.parse(r.value)]));
+}
+
+// 최근 limit개 시즌 (프로필용). 게임 API가 막히면 받은 데까지만 준다.
+export async function seasonStats(ctx, uid, limit) {
+  const list = (await regularSeasons(ctx)).slice(0, limit);
+  const have = await cachedSeasonStats(ctx, uid, list);
+  for (const s of list) {
+    if (have.has(s.id)) continue;
+    try { have.set(s.id, await fetchSeasonStat(ctx, uid, s)); } catch (e) { if (e.budget) break; }
+  }
+  return list.map(s => have.get(s.id)).filter(Boolean);
+}
+
+// 모든 시즌. 저장된 것을 먼저 쓰고, 빠진 시즌이 있을 때만 게임 API를 부른다(guard는 그때만 센다).
+// 한 번에 다 못 받으면 partial: true 이고, 다시 부르면 남은 시즌만 받는다.
+// UID가 바뀌었을 때(401/404) withUid가 다시 시도할 수 있게 그 오류는 그대로 던진다.
+export async function seasonHistory(ctx, uid, guard) {
+  const list = await regularSeasons(ctx);
+  const have = await cachedSeasonStats(ctx, uid, list);
+  const missing = list.filter(s => !have.has(s.id));
+  let partial = false;
+  if (missing.length && guard) await guard.check();
+  for (const s of missing) {
+    try { have.set(s.id, await fetchSeasonStat(ctx, uid, s)); }
+    catch (e) { if (e.budget || e.status === 429) { partial = true; break; } throw e; }
+  }
+  if (missing.length && guard && have.size > list.length - missing.length) await guard.commit();
+  const items = list.map(s => have.get(s.id)).filter(Boolean);
+  return { items, seasons: list.length, empty: list.filter(s => have.has(s.id) && !have.get(s.id)).length, partial };
 }
 export async function lookupUid(ctx, nickname) {
   const cached = await kvGet(ctx, 'uid:' + nickname);

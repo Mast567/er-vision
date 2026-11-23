@@ -72,10 +72,11 @@ class H(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         with LOCK:
-            STATE['calls'] += 1
             u = urllib.parse.urlparse(self.path)
             q = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
             p = u.path
+            if not p.startswith('/__'):   # 시험용 주소(/__calls 등)는 게임 API 호출 수에 넣지 않는다
+                STATE['calls'] += 1
             if p == '/__truth':
                 return self.send({n: [public(g) for g in L] for n, L in USERS.items()} | {'_detailOk': sorted(STATE['detail_ok']), '_detail404': sorted(STATE['detail_404'])})
             if p == '/__calls':
@@ -129,7 +130,8 @@ class H(http.server.BaseHTTPRequestHandler):
                 seasons = []
                 for i, sid in enumerate(range(41, 11, -1)):
                     y, m = divmod(2026 * 12 + 9 - i, 12)
-                    seasons.append({'seasonID': sid, 'seasonName': f'S{sid}', 'seasonStart': f'{y}-{m + 1:02d}-01 00:00:00',
+                    name = f'Season{(sid + 3) // 2}' if sid % 2 else f'Pre-Season{(sid + 4) // 2}'   # 41 = Season22(시즌 13), 40 = 그 프리 시즌
+                    seasons.append({'seasonID': sid, 'seasonName': name, 'seasonStart': f'{y}-{m + 1:02d}-01 00:00:00',
                                     'seasonEnd': '2026-12-31 00:00:00' if sid == 41 else f'{y + (m + 1) // 12}-{(m + 1) % 12 + 1:02d}-01 00:00:00', 'isCurrent': 1 if sid == 41 else 0})
                 return self.send({'code': 200, 'message': 'Success', 'data': seasons})
             if p == '/v2/data/Character':
@@ -137,15 +139,15 @@ class H(http.server.BaseHTTPRequestHandler):
             if p == '/v2/data/Area':
                 return self.send({'code': 200, 'message': 'Success', 'data': [{'code': i, 'name': f'A{i}'} for i in range(1, 21)]})
             if p.startswith('/v2/user/stats/uid/'):
-                # 최근 3개 시즌만 공식 시즌 통계가 있다 (화면 시안용 값, UID와 시즌으로 정해진다)
+                # 정규 시즌의 일부에만 공식 시즌 통계가 있다 (최근일수록 자주). 값은 UID와 시즌으로 정해진다
                 uid, sid = p.split('/')[5], int(p.split('/')[6])
-                if sid < 39:
-                    return self.send({'code': 200, 'message': 'Success', 'userStats': []})
                 r = random.Random(f'{uid}:{sid}')
+                if sid % 2 == 0 or r.random() > (0.85 if sid >= 33 else 0.4):
+                    return self.send({'code': 200, 'message': 'Success', 'userStats': []})
                 n = r.randint(60, 240)
                 chars = [{'characterCode': c, 'totalGames': r.randint(5, 40), 'wins': r.randint(0, 6), 'top3': r.randint(3, 15), 'averageRank': round(r.uniform(3, 6), 2)} for c in r.sample(range(1, 31), 5)]
                 return self.send({'code': 200, 'message': 'Success', 'userStats': [{
-                    'mmr': r.randint(5800, 7900) - (41 - sid) * 500, 'rank': r.randint(800, 9000), 'rankSize': 52000, 'rankPercent': round(r.uniform(0.02, 0.2), 4),
+                    'mmr': max(300, r.randint(5800, 7900) - (41 - sid) * 180), 'rank': r.randint(800, 9000), 'rankSize': 52000, 'rankPercent': round(r.uniform(0.02, 0.2), 4),
                     'totalGames': n, 'totalWins': n // 9, 'averageRank': round(r.uniform(3.6, 5.2), 2), 'top3': round(r.uniform(0.3, 0.5), 3),
                     'averageKills': round(r.uniform(2, 5), 2), 'averageAssistants': round(r.uniform(2, 6), 2), 'characterStats': chars}]})
             return self.send({'code': 404, 'message': 'Not Found'})

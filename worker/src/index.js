@@ -5,9 +5,9 @@ import { startLogin, finishLogin, sessionUser, loginsReady, linkStart, unlinkLog
 import { CORS, sendRaw, okObj, fail, toInt } from './util.js';
 import { DATA_V } from './er-api.js';
 import { makeCtx, withLock, settings, seasonStats, lookupUid, refreshMeta } from './store.js';
-import { ownerUid, ownerRefresh, pendingOwner, workJob, deepLookup, jobStatus, quickLookup } from './collect.js';
+import { ownerUid, ownerRefresh, pendingOwner, workJob, deepLookup, jobStatus, quickLookup, historyLookup, ownerHistory } from './collect.js';
 import { quota, claimLegacy, deleteAccount, importData, bootstrap, saveTiers } from './user.js';
-import { guestLookup } from './guest.js';
+import { guestLookup, guestHistory } from './guest.js';
 import './features/companions.js';
 import './features/notes.js';
 
@@ -32,7 +32,11 @@ async function handle(request, env) {
 
   const u = await sessionUser(ctx.db, request, p);
   const nick = String(p.nickname || '').trim();
-  if (!u) return action === 'lookup' ? guestLookup(ctx, request, nick) : fail('로그인이 필요합니다.', { needLogin: true });
+  if (!u) {
+    if (action === 'lookup') return guestLookup(ctx, request, nick);
+    if (action === 'seasonHistory' && nick) return guestHistory(ctx, request, nick);
+    return fail('로그인이 필요합니다.', { needLogin: true });
+  }
   ctx.user = u;
   const admin = () => { if (!u.is_admin) throw new Error('관리자만 쓸 수 있습니다.'); };
   switch (action) {
@@ -41,6 +45,8 @@ async function handle(request, env) {
     case 'refresh':
       return okObj(await withLock(ctx, 'owner:' + u.id, 90000, () => ownerRefresh(ctx, u), async () => ({ added: 0, remaining: await pendingOwner(ctx, u), busy: true })));
     case 'lookup': return okObj(await quickLookup(ctx, nick, quota(ctx, u, 'quick')));
+    // 닉네임을 주면 그 사람(조회 횟수에 센다), 없으면 내 계정
+    case 'seasonHistory': return okObj(nick ? await historyLookup(ctx, nick, quota(ctx, u, 'quick')) : u.nickname ? await ownerHistory(ctx, u) : { items: [], seasons: 0, empty: 0, partial: false });
     case 'deep': return deepLookup(ctx, nick, p.force === '1' || p.force === true, quota(ctx, u, 'deep'));
     case 'jobStatus': return jobStatus(ctx, nick);
     case 'import': return okObj(await importData(ctx, u, String(p.kind || ''), p.items, { needDetail: p.needDetail === true || p.needDetail === '1' }));

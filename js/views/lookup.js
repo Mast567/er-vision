@@ -6,11 +6,28 @@
   const H = ERV.helpers;
   const RANKED = 3;   // 닉네임 조회는 랭크 경기만 모은다
 
-  function seasonTable(st) {
-    if (!st || !st.length) return null;
+  // 방문자는 결과마다 그 결과에 쓰인 이름표만 받으므로 앞서 받은 것과 합친다
+  function addRef(ref) {
+    if (S.boot || !ref) return;
+    const prev = (S.guestRef && S.guestRef.names) || {}, names = {};
+    new Set(Object.keys(prev).concat(Object.keys(ref.names || {}))).forEach(k => { names[k] = Object.assign({}, prev[k], (ref.names || {})[k]); });
+    S.guestRef = Object.assign({}, ref, { names });
+    Analysis.setNames(names);
+  }
+  // 최근 4개 시즌 표 + [전 시즌 기록 보기]
+  function seasonTable(st, data, rerender) {
+    const more = el('button', { class: 'btn' }, '전 시즌 기록 보기');
+    const msg = el('span', { class: 'mu small' }, S.boot ? '' : '처음 보는 닉네임이면 조회 1회로 셉니다.');
+    more.onclick = async () => {
+      more.disabled = true; msg.textContent = '시즌마다 공식 기록을 받는 중... 처음에는 30초쯤 걸릴 수 있습니다.';
+      try { const h = await ERV.loadHistory(data.nickname); addRef(h.ref); data.history = h; rerender(); }
+      catch (e) { if (e.needLogin) return handleErr(e); msg.textContent = '실패: ' + e.message; more.disabled = false; }
+    };
+    const action = el('div', { class: 'row' }, [more, msg]);
+    if (!st || !st.length) return H.card(null, [action]);
     const head = ['시즌', 'RP', '순위', '판수', '평균 등수', 'TOP3'];
     const rows = st.map(s => [Analysis.seasonLabel(s.seasonName), fmtI(s.rp), s.rank ? `${fmtI(s.rank)} / ${fmtI(s.rankSize)}` : '-', String(s.games ?? '-'), fmtN(s.avgRank), fmtP(s.top3)]);
-    return H.card('시즌 기록', [el('div', { class: 'tbl-wrap' }, el('table', { class: 'tbl' }, [el('thead', {}, el('tr', {}, head.map((h, i) => el('th', { class: i ? 'num' : '' }, h)))), el('tbody', {}, rows.map(r => el('tr', {}, r.map((c, i) => el('td', { class: i ? 'num' : '' }, c)))))]))], { note: '공식 시즌 통계' });
+    return H.card('최근 시즌', [el('div', { class: 'tbl-wrap' }, el('table', { class: 'tbl' }, [el('thead', {}, el('tr', {}, head.map((h, i) => el('th', { class: i ? 'num' : '' }, h)))), el('tbody', {}, rows.map(r => el('tr', {}, r.map((c, i) => el('td', { class: i ? 'num' : '' }, c)))))])), action], { note: '공식 시즌 통계' });
   }
   // 분석 범위: 최근 10판 / 30판 (정밀 분석은 90일 전체도). 서버는 최근 기록을 30판까지 준다.
   const RANGES = [[10, '최근 10판'], [30, '최근 30판']];
@@ -22,7 +39,7 @@
     const G = S.lookupRange === 'all' ? all : all.slice(-S.lookupRange);
     const s = Analysis.summary(G);
     const when = data.mode === 'deep' ? `정밀 분석 · 마지막 수집 ${data.lastFetch ? new Date(data.lastFetch).toLocaleString('ko-KR') : '-'}` : (data.cached ? '최근 기록 · 10분 안에 조회한 결과' : '최근 기록 · 방금 조회');
-    const st = seasonTable(data.seasonStats);
+    const st = data.history ? H.seasonHistoryCard(data.history) : seasonTable(data.seasonStats, data, rerender);
     const out = [H.group('PROFILE', '프로필', [H.profileCard(data.nickname, data.seasonStats), st].filter(Boolean), el('span', { class: 'mu small' }, when))];
     if (!all.length) return out.concat(H.group('GAMES', '최근 경기', [H.card(null, [H.empty('최근 랭크 경기가 없습니다.')])]));
     const pick = H.segmented('분석 범위', ranges, S.lookupRange, v => { S.lookupRange = v; rerender(); });
@@ -54,7 +71,7 @@
     const busy = b => { quick.disabled = deep.disabled = b; };
     const show = data => {
       // 방문자 결과에는 그 결과에 필요한 이름표와 기준 자료가 붙어 온다
-      if (!S.boot && data.ref) { S.guestRef = data.ref; Analysis.setNames(data.ref.names); }
+      addRef(data.ref);
       S.lookup = data; out.innerHTML = ''; UI.killCharts(); result(data, () => show(data)).forEach(n => out.appendChild(n));
     };
 

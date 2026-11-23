@@ -64,7 +64,10 @@
     v.appendChild(el('div', { class: 'page-head' }, [el('h1', {}, '홈'), el('span', { class: 'mu' }, `${S.mode === 'all' ? '전체 모드' : Analysis.MODE_NAME[S.mode]} · ${S.season === 'all' ? '전체 기간' : seasonName(S.season)}`)]));
     if (!S.boot.owner.nickname) { v.appendChild(H.card(null, [H.empty('내 계정에서 게임 닉네임을 저장하면 경기 기록을 모으기 시작합니다. 닉네임 조회는 지금 바로 쓸 수 있습니다.')])); return; }
     if (!G.length) { v.appendChild(H.card(null, [H.empty('이 모드·시즌에 저장된 경기가 없습니다. [지금 갱신]을 누르거나 다른 모드·시즌을 고르세요.')])); return; }
-    if (S.mode === 3 || S.mode === 'all') v.appendChild(H.group('PROFILE', '내 프로필', [S.seasonStats ? H.profileCard(S.boot.owner.nickname, S.seasonStats) : H.card(null, [H.empty('시즌 기록을 불러오는 중...')])]));
+    if (S.mode === 3 || S.mode === 'all') {
+      v.appendChild(H.group('PROFILE', '내 프로필', [S.seasonStats ? H.profileCard(S.boot.owner.nickname, S.seasonStats) : H.card(null, [H.empty('시즌 기록을 불러오는 중...')])]));
+      v.appendChild(H.group('SEASONS', '시즌 기록', [S.history ? H.seasonHistoryCard(S.history) : H.card(null, [H.empty('전 시즌 기록을 불러오는 중... 처음에는 시즌마다 공식 기록을 받아서 30초쯤 걸릴 수 있습니다.')])], el('span', { class: 'mu small' }, '공식 시즌 통계 · 랭크')));
+    }
     const F = findings(G);
     if (F.length) v.appendChild(H.group('FINDINGS', '관찰 결론', [el('div', { class: 'grid findings' }, F)]));
     v.appendChild(H.group('NOW', '세션과 핵심 숫자', [el('div', { class: 'grid two top' }, [sessionCard(G), H.card('핵심 숫자', [kpis(G)])])]));

@@ -3,7 +3,7 @@
 const ERV = (() => {
   const { $, el, toast, killCharts } = UI;
   const VERSION = 'v0.6';
-  const S = { boot: null, games: [], mode: 3, season: 'all', seasonStats: null, lookup: null, lookupPending: null, lookupRange: 30, loginError: '', linked: '', guestRef: null };
+  const S = { boot: null, games: [], mode: 3, season: 'all', seasonStats: null, history: null, lookup: null, lookupPending: null, lookupRange: 30, loginError: '', linked: '', guestRef: null };
   // 기준 자료(meta, seasons, tiers): 로그인하면 bootstrap, 로그인 없이 조회하면 조회 결과에 붙어 온 것
   const ref = () => S.boot || S.guestRef || { meta: null, seasons: [], tiers: null };
 
@@ -83,9 +83,21 @@ const ERV = (() => {
     if (b.owner.nickname && !S.seasonStats) {
       API.get('seasonStats').catch(() => []).then(st => { S.seasonStats = st; if (currentView() === 'home') route(); });
     }
+    if (b.owner.nickname && !S.history) loadHistory().then(h => { S.history = h; if (currentView() === 'home') route(); }).catch(() => {});
+  }
+  // 로그아웃·계정 삭제: 이 브라우저에 남은 앞 계정의 데이터를 지운다
+  function forget() { API.store.session = ''; Object.assign(S, { boot: null, games: [], seasonStats: null, history: null }); }
+  // 전 시즌 기록. 서버가 한 번에 다 못 받으면(partial) 남은 시즌을 이어서 받는다. nickname이 없으면 내 계정
+  async function loadHistory(nickname) {
+    let d;
+    for (let i = 0; i < 5; i++) {
+      d = await API.get('seasonHistory', nickname ? { nickname } : {});
+      if (!d.partial) break;
+    }
+    return d;
   }
   function handleErr(e, prefix) {
-    if (e && e.needLogin) { S.boot = null; route(); toast('다시 로그인하세요.', true); return; }
+    if (e && e.needLogin) { forget(); route(); toast('다시 로그인하세요.', true); return; }
     toast((prefix || '실패: ') + (e && e.message), true);
   }
   // 새 경기 가져오기: 서버가 한 번에 조금씩 처리하므로 끝날 때까지 이어서 부른다
@@ -170,7 +182,7 @@ const ERV = (() => {
     route();
   });
 
-  return { VERSION, S, Analysis, registerView, route, ref, filtered, seasonName, loadBoot, handleErr, refreshGames, isCobalt, hasRp };
+  return { VERSION, S, Analysis, registerView, route, ref, filtered, seasonName, loadBoot, loadHistory, forget, handleErr, refreshGames, isCobalt, hasRp };
 })();
 
 // 기능 파일(js/features/*.js)이 window.ERV 로 찾는다

@@ -213,6 +213,10 @@ dl.info dd { margin: 0; overflow-wrap: anywhere; }
 .chip-past { font-size: 12px; color: var(--mu); border: 1px solid var(--ln); border-radius: 999px; padding: 2px 10px; }
 .mono-input { width: 100%; font-family: var(--mono); font-size: 13px; }
 
+/* 전 시즌 기록 */
+.tier-cell { display: inline-flex; align-items: center; gap: 6px; }
+.tier-mini { width: auto; height: 22px; }
+
 /* 경기 자세히: 맨 위 한 줄 + 네 묶음 */
 .detail-head { display: flex; align-items: center; gap: 10px; font-size: 16px; margin-bottom: 14px; }
 .detail-rp { font: 700 16px var(--mono); }
@@ -275,4 +279,6 @@ dl.info dd { margin: 0; overflow-wrap: anywhere; }
   .tbl.games .g-kda { grid-area: kda; text-align: right; color: var(--mu); font: 12px var(--mono); }
   .tbl.games .g-mode, .tbl.games .g-surv, .tbl.games .g-area, .tbl.games .g-killer, .tbl.games .g-team { display: none; }
   .detail-grid { grid-template-columns: 1fr; }
+  .tbl.seasons .s-wins, .tbl.seasons .s-avg, .tbl.seasons .s-most, .tbl.seasons .rank-n { display: none; }
+  .tbl.seasons th, .tbl.seasons td { padding: 8px; }
 }

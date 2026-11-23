@@ -352,6 +352,38 @@ class Run:
             st, _, body = http(self.W + 'auth/kakao?return=' + urllib.parse.quote(SITE))
             self.check(st == 404, f'12단계: 없는 로그인 수단 {st}')
 
+            # 13단계: 전 시즌 기록 (정규 시즌만, 최신부터, 두 번째부터는 게임 API를 부르지 않음, 남의 닉네임은 조회 1회로 셈)
+            regular = 15   # 가짜 API: 41~13 중 홀수 ID가 정규 시즌
+            h = self.api(alice2, 'seasonHistory')
+            if h['ok']:
+                d = h['data']; ids = [x['seasonId'] for x in d['items']]
+                self.check(d['seasons'] == regular and all(i % 2 for i in ids) and ids == sorted(ids, reverse=True), f"13단계: 시즌 목록 이상 {d['seasons']} {ids}")
+                self.check(d['partial'] or len(ids) + d['empty'] == regular, f"13단계: 받은 시즌 수 {len(ids)} + 빈 시즌 {d['empty']} != {regular}")
+                c0 = self.mock('/__calls')['calls']
+                h2 = self.api(alice2, 'seasonHistory')
+                if not d['partial']:
+                    self.check(self.mock('/__calls')['calls'] == c0 and h2['data']['items'] == d['items'], f"13단계: 저장된 시즌을 다시 받음 (호출 {self.mock('/__calls')['calls'] - c0}, 같음 {h2['data']['items'] == d['items']}, {len(h2['data']['items'])} vs {len(d['items'])})")
+            else:
+                self.check('429' in h['error'], f'13단계: 내 전 시즌 기록 실패 {h}')
+            used = lambda: sum(int(r['value']) for r in self.sql("SELECT value FROM kv WHERE key LIKE 'rl:quick:%'"))
+            q0 = used()
+            hb = self.api(bob, 'seasonHistory', nickname=nick_b)
+            if hb['ok'] and not hb['data']['partial']:
+                self.check(used() == q0 + 1, f'13단계: 남의 전 시즌 기록이 조회 횟수에 한 번 세지지 않음 ({q0} → {used()})')
+                self.api(bob, 'seasonHistory', nickname=nick_b)
+                self.check(used() == q0 + 1, '13단계: 저장된 전 시즌 기록을 볼 때도 횟수를 셈')
+            gq = lambda: sum(int(r['value']) for r in self.sql("SELECT value FROM kv WHERE key LIKE 'rl:guest:%'"))
+            self.sql("DELETE FROM kv WHERE key LIKE 'rl:guest%'")
+            gh = json.loads(http(self.W + '?' + urllib.parse.urlencode({'action': 'seasonHistory', 'nickname': nick_c}))[2])
+            if gh['ok'] and not gh['data']['partial']:
+                codes = {str(c['characterCode']) for x in gh['data']['items'] for c in x.get('characterStats') or []}
+                self.check(set(gh['data']['ref']['names']['characters']) <= codes, '13단계: 방문자 전 시즌 기록 이름표가 범위를 넘음')
+                self.check(gq() == 1, f'13단계: 방문자 전 시즌 기록 횟수 {gq()}')
+                http(self.W + '?' + urllib.parse.urlencode({'action': 'seasonHistory', 'nickname': nick_c}))
+                self.check(gq() == 1, '13단계: 방문자가 저장된 전 시즌 기록을 볼 때도 횟수를 셈')
+            r = json.loads(http(self.W + '?action=seasonHistory')[2])
+            self.check(not r['ok'] and r.get('needLogin'), '13단계: 닉네임 없는 방문자 전 시즌 기록이 열림')
+
             counts = {n: len(mine(n, self.mock('/__truth'))) for n in (nick_a, nick_b, nick_c)}
             return {'seed': self.seed, 'games': counts, 'refresh': [n1, n2, n3], 'errors': [e1, e2, e3], 'apiCalls': self.mock('/__calls')['calls']}
         finally:

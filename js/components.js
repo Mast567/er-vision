@@ -129,5 +129,37 @@
     return el('section', { class: 'card profile' }, [head, nums, most, prev]);
   }
 
-  ERV.helpers = { el, esc, fmtP, fmtN, fmtS, signed, tile, finding, card, empty, group, segmented, sample, rankBadge, statTable, gamesTable, rpStrip, metric, rankRows, profileCard, filtered: ERV.filtered, isCobalt: ERV.isCobalt, hasRp: ERV.hasRp, toast: UI.toast };
+  // ---- 전 시즌 기록: RP 막대(오래된 시즌 → 최근) + 시즌별 표. data: 서버 seasonHistory 결과 { items(최신부터), empty, partial }
+  function tierCell(t) {
+    const icon = t && t.tier && TIER_ICON[t.tier];
+    const text = t && t.label ? t.label : t && t.below ? `${t.below.tier} 미만` : '-';
+    return el('span', { class: 'tier-cell' }, [icon ? el('img', { class: 'tier-mini', src: `img/tiers/${icon}.png`, alt: '', width: 145, height: 185 }) : null, text]);
+  }
+  function seasonHistoryCard(data) {
+    const R = ERV.ref(), items = data.items || [];
+    if (!items.length) return card(null, [empty(data.partial ? '시즌 기록을 받는 중입니다. 잠시 뒤 다시 열어 주세요.' : '랭크 시즌 기록이 없습니다.')]);
+    const label = s => Analysis.seasonLabel(s.seasonName);
+    const asc = items.slice().reverse();
+    const box = UI.chartBox(200);
+    requestAnimationFrame(() => UI.chart(box.canvas, {
+      type: 'bar',
+      data: { labels: asc.map(label), datasets: [{ data: asc.map(s => s.rp), backgroundColor: UI.css('--ac'), borderRadius: 3, maxBarThickness: 40 }] },
+      options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => UI.fmtI(c.raw) + ' RP' } } }, scales: { x: { ticks: { maxRotation: 0, autoSkip: true } } } }
+    }));
+    const most = s => { const c = (s.characterStats || []).slice().sort((a, b) => b.games - a.games)[0]; return c ? `${Analysis.charName(c.characterCode, R.meta)} · ${c.games}판` : '-'; };
+    // [칸 이름, 제목, 값, 숫자 칸]. 휴대폰에서는 s-wins·s-avg·s-most 칸을 숨긴다 (css/style.css)
+    const cols = [['season', '시즌', s => label(s)], ['tier', '티어', s => tierCell(Analysis.tierOf(s.rp, s.rank, R.tiers))], ['rp', 'RP', s => UI.fmtI(s.rp), 1],
+      ['rank', '순위', s => s.rank ? el('span', {}, [el('span', { class: 'rank-n' }, `${UI.fmtI(s.rank)}위 · `), `상위 ${s.rankPercent != null ? (s.rankPercent * 100).toFixed(1) + '%' : '-'}`]) : '-'],
+      ['games', '판수', s => UI.fmtI(s.games), 1], ['wins', '1등', s => UI.fmtI(s.wins), 1], ['avg', '평균 등수', s => fmtN(s.avgRank), 1], ['top3', 'TOP3', s => fmtP(s.top3), 1], ['most', '많이 한 캐릭터', most]];
+    const cls = ([k, , , n]) => 's-' + k + (n ? ' num' : '');
+    const table = el('div', { class: 'tbl-wrap' }, el('table', { class: 'tbl seasons' }, [
+      el('thead', {}, el('tr', {}, cols.map(c => el('th', { class: cls(c) }, c[1])))),
+      el('tbody', {}, items.map(s => el('tr', {}, cols.map(c => el('td', { class: cls(c) }, c[2](s))))))
+    ]));
+    const notes = [`랭크 기록이 있는 ${items.length}개 시즌${data.empty ? ` (기록 없는 시즌 ${data.empty}개는 뺐습니다)` : ''}.`, '티어는 지금 시즌의 티어 기준표로 계산해서, 그 시즌의 실제 티어와 다를 수 있습니다.'];
+    if (data.partial) notes.unshift('아직 받지 못한 시즌이 있습니다. 잠시 뒤 다시 열면 이어서 받습니다.');
+    return card(null, [box.wrap, table].concat(notes.map(t => el('p', { class: 'mu small' }, t))));
+  }
+
+  ERV.helpers = { el, esc, fmtP, fmtN, fmtS, signed, tile, finding, card, empty, group, segmented, sample, rankBadge, statTable, gamesTable, rpStrip, metric, rankRows, profileCard, seasonHistoryCard, filtered: ERV.filtered, isCobalt: ERV.isCobalt, hasRp: ERV.hasRp, toast: UI.toast };
 })();

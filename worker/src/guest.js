@@ -2,7 +2,7 @@
 // 게임 API 키 하나(초당 1회)를 모두가 나눠 쓰므로 방문자 조회는 한 번에 한 건만 받고,
 // 접속 위치(IP)마다 하루 횟수와 방문자 전체의 하루 횟수를 센다. 10분 안에 조회된 닉네임은 캐시로 주고 횟수에 넣지 않는다.
 // IP는 저장하지 않는다. 서버만 아는 값과 날짜를 섞은 해시를 이틀 동안만 둔다.
-import { quickLookup } from './collect.js';
+import { quickLookup, historyLookup } from './collect.js';
 import { randomToken, sha256 } from './auth.js';
 import { LIMITS } from './user.js';
 import { kvGet, kvPut, withLock, settings, settingStmt, metaRaw, seasons } from './store.js';
@@ -42,7 +42,7 @@ async function guestRef(ctx, data, s) {
     add('characters', g.characterNum); add('areas', g.startArea); add('weapons', g.weapon); add('traits', g.core); add('tactical', g.tactical);
     Object.keys(g.killers || {}).forEach(c => add('characters', c));
   }
-  for (const st of data.seasonStats || []) for (const c of st.characterStats || []) add('characters', c.characterCode);
+  for (const st of (data.seasonStats || []).concat(data.items || [])) for (const c of st.characterStats || []) add('characters', c.characterCode);
   const pick = (obj, kind) => Object.fromEntries([...used[kind]].filter(k => obj && obj[k] != null).map(k => [k, obj[k]]));
   return {
     names: Object.fromEntries(Object.keys(used).map(k => [k, pick(names[k], k)])),
@@ -52,12 +52,15 @@ async function guestRef(ctx, data, s) {
   };
 }
 
-export async function guestLookup(ctx, request, nick) {
+// 최근 기록 조회와 전 시즌 기록은 같은 잠금과 같은 횟수를 쓴다 (저장된 결과만 볼 때는 세지 않는다)
+async function asGuest(ctx, request, run) {
   const s = await settings(ctx);
   const visitor = await visitorKey(ctx, request, s);
   return withLock(ctx, 'guest-lookup', LOCK_MS, async () => {
-    const data = await quickLookup(ctx, nick, guestQuota(ctx, visitor));
+    const data = await run(guestQuota(ctx, visitor));
     data.ref = await guestRef(ctx, data, s);
     return okObj(data);
   }, () => fail('다른 방문자의 조회를 처리하는 중입니다. 몇 초 뒤 다시 눌러 주세요.'));
 }
+export const guestLookup = (ctx, request, nick) => asGuest(ctx, request, guard => quickLookup(ctx, nick, guard));
+export const guestHistory = (ctx, request, nick) => asGuest(ctx, request, guard => historyLookup(ctx, nick, guard));

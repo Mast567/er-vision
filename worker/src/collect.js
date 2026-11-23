@@ -3,7 +3,7 @@
 import { ext } from './ext.js';
 import { DATA_V, normGame, listPatch, attachDetail } from './er-api.js';
 import { okRaw, okObj, joinRows } from './util.js';
-import { RANKED_MODE, kvGet, kvPut, kvDel, lock, unlock, existingIds, batchAll, seasons, seasonStats, lookupUid, withUid } from './store.js';
+import { RANKED_MODE, kvGet, kvPut, kvDel, lock, unlock, existingIds, batchAll, seasons, seasonStats, seasonHistory, lookupUid, withUid } from './store.js';
 
 const STORE_MODES = [2, 3, 6];   // 내 경기: 일반, 랭크, 코발트. 닉네임 조회는 랭크만
 const QUICK_GAMES = 30;          // 최근 기록 분석: 랭크 30판 (화면에서 10판/30판으로 나눠 본다)
@@ -214,6 +214,18 @@ export async function jobStatus(ctx, nick) {
 }
 
 // ---- 최근 기록 분석: 상세 없이 약 50판, 10분 캐시
+// 전 시즌 기록: 닉네임 조회용과 내 계정용
+export async function historyLookup(ctx, nick, guard) {
+  if (!nick) throw new Error('닉네임을 입력하세요.');
+  const data = await withUid(ctx, nick, await lookupUid(ctx, nick), async () => {}, id => seasonHistory(ctx, id, guard));
+  return Object.assign({ nickname: nick }, data);
+}
+export async function ownerHistory(ctx, u) {
+  const saveUid = id => ctx.db.prepare('UPDATE users SET uid = ? WHERE id = ?').bind(id, u.id).run();
+  const data = await withUid(ctx, u.nickname, await ownerUid(ctx, u), saveUid, id => seasonHistory(ctx, id, null));
+  return Object.assign({ nickname: u.nickname }, data);
+}
+
 // 결과는 객체로 돌려준다 (로그인한 사람과 방문자가 응답에 붙이는 것이 다르다)
 export async function quickLookup(ctx, nick, guard) {
   if (!nick) throw new Error('닉네임을 입력하세요.');
