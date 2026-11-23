@@ -13,7 +13,8 @@
   }
   // 판수가 충분한 묶음을 먼저, 그 안에서 지표 순
   const rankRows = (rows, mode) => { const m = metric(mode); return rows.slice().sort((a, b) => (a.low - b.low) || m.better(a, b) || b.n - a.n); };
-  const sample = n => el('span', { class: 'sample' + (n < MIN_N ? ' low' : '') }, n < MIN_N ? `${n}판 · 판수 부족` : `${n}판`);
+  // 10판 미만은 글자만 흐리게 한다. 표 위에 '흐리게 = 10판 미만' 안내를 둔다
+  const sample = n => el('span', { class: 'sample' + (n < MIN_N ? ' low' : ''), title: n < MIN_N ? `${MIN_N}판 미만이라 참고만 하세요` : null }, `${n}판`);
 
   function tile(label, value, sub) {
     return el('div', { class: 'tile' }, [el('div', { class: 'tile-label' }, label), el('div', { class: 'tile-value' }, value), sub ? el('div', { class: 'tile-sub' }, sub) : null]);
@@ -46,6 +47,7 @@
 
   // 묶음 표 (캐릭터별, 지역별 ...). extra: [[제목, r => 노드|문자열], ...]
   function statTable(rows, label, extra = [], mode = S.mode) {
+    if (!rows.length) return empty('아직 기록이 없습니다.');
     const m = metric(mode);
     const cols = [[label, r => r.key], ['판수', r => sample(r.n)], [m.label, m.cell]];
     if (m.key !== 'avgRank') cols.push(['평균 등수', r => fmtN(r.avgRank)]);
@@ -62,16 +64,20 @@
   function gamesTable(list, onClick, opts = {}) {
     const mode = opts.mode ?? S.mode;
     const showMode = mode === 'all', rp = mode === 3 || mode === 'all';
-    const head = ['일시'].concat(showMode ? ['모드'] : [], ['캐릭터', '등수', 'K/A/D', '생존'], rp ? ['RP'] : [], ['시작 지역', '나를 잡은 캐릭터'], rp ? ['팀 / 로비 RP'] : ['팀원']);
+    // [칸 이름, 제목, 값]. 칸 이름(g-...)으로 휴대폰에서 두 줄 카드로 배치한다 (css/style.css)
+    const cols = [['date', '일시', g => g.startDtm.slice(5, 16)]]
+      .concat(showMode ? [['mode', '모드', g => g.modeName]] : [])
+      .concat([
+        ['char', '캐릭터', g => el('span', {}, [g.charName, g.weaponName ? el('span', { class: 'mu' }, ' · ' + g.weaponName) : null])],
+        ['rank', '등수', rankBadge], ['kda', 'K/A/D', g => `${g.kills}/${g.assists}/${g.deaths}`], ['surv', '생존', g => fmtN(g.surviveMin, 1) + '분']
+      ])
+      .concat(rp ? [['rp', 'RP', g => g.mode === 3 ? signed(g.rpChange, 0) : '-']] : [])
+      .concat([['area', '시작 지역', g => g.startAreaName || '-'], ['killer', '나를 잡은 캐릭터', g => g.killerText || '-']])
+      .concat(rp ? [['team', '팀 / 로비 RP', g => g.teamAvgRp != null ? `${g.teamAvgRp} / ${g.lobbyAvgRp}` : '-']] : [['team', '팀원', g => [g.mate1, g.mate2, g.mate3].filter(Boolean).join(', ') || '-']]);
+    const head = cols.map(c => c[1]);
     const tbody = el('tbody');
     list.forEach(g => {
-      const cells = [g.startDtm.slice(5, 16)]
-        .concat(showMode ? [g.modeName] : [])
-        .concat([el('span', {}, [g.charName, g.weaponName ? el('span', { class: 'mu' }, ' · ' + g.weaponName) : null]), rankBadge(g), `${g.kills}/${g.assists}/${g.deaths}`, fmtN(g.surviveMin, 1) + '분'])
-        .concat(rp ? [g.mode === 3 ? signed(g.rpChange, 0) : '-'] : [])
-        .concat([g.startAreaName || '-', g.killerText || '-'])
-        .concat(rp ? [g.teamAvgRp != null ? `${g.teamAvgRp} / ${g.lobbyAvgRp}` : '-'] : [[g.mate1, g.mate2, g.mate3].filter(Boolean).join(', ') || '-']);
-      const tr = el('tr', { class: (onClick ? 'clickable' : '') + (opts.selected === g.gameId ? ' selected' : '') }, cells.map(c => el('td', {}, c)));
+      const tr = el('tr', { class: (onClick ? 'clickable' : '') + (opts.selected === g.gameId ? ' selected' : '') }, cols.map(([k, , f]) => el('td', { class: 'g-' + k }, f(g))));
       if (onClick) tr.onclick = () => onClick(g);
       tbody.appendChild(tr);
     });

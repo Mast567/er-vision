@@ -45,6 +45,7 @@ const UI = (() => {
   function chart(canvas, cfg) {
     Chart.defaults.color = css('--mu'); Chart.defaults.borderColor = css('--ln');
     Chart.defaults.font.family = css('--font');
+    Chart.defaults.animation = false;
     const c = new Chart(canvas, cfg); charts.push(c); return c;
   }
   function killCharts() { charts.forEach(c => { try { c.destroy(); } catch (e) { /* 이미 정리됨 */ } }); charts = []; }

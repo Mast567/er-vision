@@ -40,10 +40,10 @@
   function kpis(G) {
     const s = Analysis.summary(G);
     if (isCobalt()) return el('div', { class: 'grid kpi' }, [H.tile('판수', String(s.n)), H.tile('승률', fmtP(s.winRate)), H.tile('K/D', fmtN(s.kd)), H.tile('분당 피해', fmtI(s.dmgPerMin))]);
-    const tiles = [H.tile('판수', String(s.n))];
-    if (hasRp()) tiles.push(H.tile('현재 RP', fmtI(s.rpEnd), s.rpStart != null ? `시작 ${fmtI(s.rpStart)}` : null), H.tile('판당 RP', signed(s.avgRp)), H.tile('입장료 제외 판당', signed(s.avgRpPure), '게임 안에서 얻은 RP'));
-    tiles.push(H.tile('평균 등수', fmtN(s.avgRank)), H.tile('TOP3', fmtP(s.top3Rate)), H.tile('TOP3 → 1등', fmtP(s.conv), '3등 안에 든 판 중 1등'));
-    return el('div', { class: 'grid kpi' }, tiles);
+    const play = el('div', { class: 'grid kpi k4' }, [H.tile('판수', String(s.n)), H.tile('평균 등수', fmtN(s.avgRank)), H.tile('TOP3', fmtP(s.top3Rate)), H.tile('TOP3 → 1등', fmtP(s.conv), '3등 안에 든 판 중 1등')]);
+    if (!hasRp()) return play;
+    const rp = el('div', { class: 'grid kpi k3' }, [H.tile('현재 RP', fmtI(s.rpEnd), s.rpStart != null ? `시작 ${fmtI(s.rpStart)}` : null), H.tile('판당 RP', signed(s.avgRp)), H.tile('입장료 제외 판당', signed(s.avgRpPure), '게임 안에서 얻은 RP')]);
+    return el('div', { class: 'stack tight' }, [rp, play]);
   }
 
   function rpChart(G) {
@@ -67,7 +67,7 @@
     if (S.mode === 3 || S.mode === 'all') v.appendChild(H.group('PROFILE', '내 프로필', [S.seasonStats ? H.profileCard(S.boot.owner.nickname, S.seasonStats) : H.card(null, [H.empty('시즌 기록을 불러오는 중...')])]));
     const F = findings(G);
     if (F.length) v.appendChild(H.group('FINDINGS', '관찰 결론', [el('div', { class: 'grid findings' }, F)]));
-    v.appendChild(H.group('NOW', '세션과 핵심 숫자', [el('div', { class: 'grid two' }, [sessionCard(G), H.card('핵심 숫자', [kpis(G)])])]));
+    v.appendChild(H.group('NOW', '세션과 핵심 숫자', [el('div', { class: 'grid two top' }, [sessionCard(G), H.card('핵심 숫자', [kpis(G)])])]));
     if (hasRp()) { const c = rpChart(G); if (c) v.appendChild(H.group('TREND', 'RP 흐름', [c], el('span', { class: 'mu small' }, '경기 후 RP'))); }
     v.appendChild(H.group('GAMES', '최근 경기', [H.card(null, [H.gamesTable(G.slice(-10).reverse())])], el('a', { href: '#/records', class: 'small' }, '전체 목록은 기록 탭')));
   }

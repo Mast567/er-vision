@@ -7,7 +7,7 @@ const ERV = (() => {
   // 기준 자료(meta, seasons, tiers): 로그인하면 bootstrap, 로그인 없이 조회하면 조회 결과에 붙어 온 것
   const ref = () => S.boot || S.guestRef || { meta: null, seasons: [], tiers: null };
 
-  // ---- 화면 등록. def: { id, label, order, filters(모드·시즌 선택 표시), hidden(메뉴에 없음), public(로그인 불필요), render(v, param) }
+  // ---- 화면 등록. def: { id, label, short(휴대폰 메뉴 이름), order, filters(모드·시즌 선택 표시), hidden(메뉴에 없음), public(로그인 불필요), render(v, param) }
   const registry = [];
   function registerView(def) {
     const i = registry.findIndex(r => r.id === def.id);
@@ -17,7 +17,8 @@ const ERV = (() => {
   }
   function renderNav() {
     const nav = $('#nav'); nav.innerHTML = '';
-    registry.filter(r => !r.hidden).forEach(r => nav.appendChild(el('a', { href: '#/' + r.id, 'data-route': r.id }, r.label)));
+    // 휴대폰 아래 메뉴에는 짧은 이름(short)을 쓴다
+    registry.filter(r => !r.hidden).forEach(r => nav.appendChild(el('a', { href: '#/' + r.id, 'data-route': r.id }, [el('span', { class: 'nav-full' }, r.label), el('span', { class: 'nav-short' }, r.short || r.label)])));
   }
   const ALIAS = { dashboard: 'home', analysis: 'character', settings: 'account' };   // v0.31 주소
   function parseHash() {
@@ -54,15 +55,15 @@ const ERV = (() => {
     const modes = Analysis.modesIn(games);
     if (S.mode !== 'all' && !modes.includes(S.mode)) S.mode = modes.includes(3) ? 3 : (modes[0] ?? 'all');
     modeSel.innerHTML = '';
-    modes.forEach(m => modeSel.appendChild(el('option', { value: m }, `${Analysis.MODE_NAME[m]} (${games.filter(g => g.mode === m).length})`)));
-    modeSel.appendChild(el('option', { value: 'all' }, `전체 모드 (${games.length})`));
+    modes.forEach(m => modeSel.appendChild(el('option', { value: m }, `${Analysis.MODE_NAME[m]} · ${games.filter(g => g.mode === m).length}판`)));
+    modeSel.appendChild(el('option', { value: 'all' }, `전체 모드 · ${games.length}판`));
     modeSel.value = String(S.mode);
 
     const inMode = S.mode === 'all' ? games : games.filter(g => g.mode === S.mode);
     const ids = Analysis.seasonsIn(inMode);
     seasonSel.innerHTML = '';
-    seasonSel.appendChild(el('option', { value: 'all' }, `전체 기간 (${inMode.length})`));
-    ids.forEach(id => seasonSel.appendChild(el('option', { value: id }, `${seasonName(id)} (${inMode.filter(g => g.seasonId === id).length})`)));
+    seasonSel.appendChild(el('option', { value: 'all' }, `전체 기간 · ${inMode.length}판`));
+    ids.forEach(id => seasonSel.appendChild(el('option', { value: id }, `${seasonName(id)} · ${inMode.filter(g => g.seasonId === id).length}판`)));
     if (S.season !== 'all' && !ids.map(String).includes(String(S.season))) S.season = 'all';
     if (S.season === 'all' && ids.length) { const cur = (S.boot.seasons || []).find(s => s.current); S.season = cur && ids.includes(cur.id) ? cur.id : ids[0]; }
     seasonSel.value = String(S.season);

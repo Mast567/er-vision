@@ -54,28 +54,28 @@
 
   function render(v, selected) {
     const G = filtered(S.games);
-    v.appendChild(el('div', { class: 'page-head' }, [el('h1', {}, '전략'), el('span', { class: 'mu' }, '시작 지역, 등수, 빌드, 팀 구성')]));
+    v.appendChild(el('div', { class: 'page-head' }, [el('h1', {}, '전략'), el('span', { class: 'mu' }, '흐린 줄 = 10판 미만이라 참고만')]));
     if (!G.length) { v.appendChild(H.card(null, [H.empty('이 모드·시즌에 저장된 경기가 없습니다.')])); return; }
-    v.appendChild(el('div', { class: 'grid map-layout' }, [
-      H.card('시작 지역', [areaMap(G, selected), el('p', { class: 'mu small' }, '칸 배치는 실제 섬 모양이 아닙니다. 파랑 = 좋음, 주황 = 나쁨, 진할수록 차이가 큽니다. 10판 미만은 칠하지 않습니다. 칸을 누르면 오른쪽에 자세히 나옵니다.')]),
-      selected ? areaDetail(G, selected) : H.card('지역을 고르세요', [H.empty('왼쪽 지도에서 지역을 누르면 그 지역에서 시작한 판의 성적과 캐릭터가 나옵니다.')])
-    ]));
-    if (hasRp()) v.appendChild(breakEvenCard(G));
-    v.appendChild(el('div', { class: 'grid two' }, [
+    v.appendChild(H.group('AREA', '시작 지역', [el('div', { class: 'grid map-layout' }, [
+      H.card(null, [areaMap(G, selected), el('p', { class: 'mu small' }, '칸 배치는 실제 섬 모양이 아닙니다. 파랑 = 좋음, 주황 = 나쁨, 진할수록 차이가 큽니다. 10판 미만은 칠하지 않습니다.')]),
+      selected ? areaDetail(G, selected) : H.card('지역을 고르세요', [H.empty('지도에서 지역을 누르면 그 지역에서 시작한 판의 성적과 캐릭터가 나옵니다.')])
+    ])]));
+    if (hasRp()) v.appendChild(H.group('RANK', '등수와 RP', [breakEvenCard(G)]));
+    v.appendChild(H.group('BUILD', '빌드', [el('div', { class: 'grid two top' }, [
       H.card('증강 코어', [H.statTable(H.rankRows(Analysis.byCore(G)), '코어')]),
       H.card('전술 스킬', [H.statTable(H.rankRows(Analysis.byTactical(G)), '전술 스킬')])
-    ]));
-    v.appendChild(el('div', { class: 'grid two' }, [
+    ])]));
+    v.appendChild(H.group('TEAM', '팀과 로비', [el('div', { class: 'grid two top' }, [
       H.card('팀 평균 MMR과 내 RP 차이', [H.statTable(Analysis.byTeamGap(G).filter(r => r.n), '구간')]),
       H.card('우리 팀과 로비 평균 RP 차이', [H.statTable(Analysis.byLobbyGap(G).filter(r => r.n), '구간')])
-    ]));
-    v.appendChild(el('div', { class: 'grid two' }, [
+    ])]));
+    v.appendChild(H.group('HABIT', '습관과 상대', [el('div', { class: 'grid two top' }, [
       H.card('나를 잡은 캐릭터', [H.statTable(Analysis.byKiller(G).slice(0, 12), '캐릭터', [['잡힌 횟수', r => r.times + '회']])], { note: '그 캐릭터에게 잡힌 판의 성적' }),
       el('div', { class: 'stack' }, [
         H.card('하루 몇 판째', [H.statTable(Analysis.bySessionIndex(G), '구간')]),
         H.card('시작 시각', [H.statTable(Analysis.byHour(G).map(r => Object.assign({}, r, { key: r.key + '시' })), '시각')])
       ])
-    ]));
+    ])]));
   }
 
   ERV.registerView({ id: 'strategy', label: '전략', order: 30, filters: true, render });

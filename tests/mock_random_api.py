@@ -137,7 +137,17 @@ class H(http.server.BaseHTTPRequestHandler):
             if p == '/v2/data/Area':
                 return self.send({'code': 200, 'message': 'Success', 'data': [{'code': i, 'name': f'A{i}'} for i in range(1, 21)]})
             if p.startswith('/v2/user/stats/uid/'):
-                return self.send({'code': 200, 'message': 'Success', 'userStats': []})
+                # 최근 3개 시즌만 공식 시즌 통계가 있다 (화면 시안용 값, UID와 시즌으로 정해진다)
+                uid, sid = p.split('/')[5], int(p.split('/')[6])
+                if sid < 39:
+                    return self.send({'code': 200, 'message': 'Success', 'userStats': []})
+                r = random.Random(f'{uid}:{sid}')
+                n = r.randint(60, 240)
+                chars = [{'characterCode': c, 'totalGames': r.randint(5, 40), 'wins': r.randint(0, 6), 'top3': r.randint(3, 15), 'averageRank': round(r.uniform(3, 6), 2)} for c in r.sample(range(1, 31), 5)]
+                return self.send({'code': 200, 'message': 'Success', 'userStats': [{
+                    'mmr': r.randint(5800, 7900) - (41 - sid) * 500, 'rank': r.randint(800, 9000), 'rankSize': 52000, 'rankPercent': round(r.uniform(0.02, 0.2), 4),
+                    'totalGames': n, 'totalWins': n // 9, 'averageRank': round(r.uniform(3.6, 5.2), 2), 'top3': round(r.uniform(0.3, 0.5), 3),
+                    'averageKills': round(r.uniform(2, 5), 2), 'averageAssistants': round(r.uniform(2, 6), 2), 'characterStats': chars}]})
             return self.send({'code': 404, 'message': 'Not Found'})
 
 

@@ -107,12 +107,12 @@
 
     const qualTrios = trios.filter(t => t.n >= LIST_MIN), qualPeople = people.filter(p => p.n >= LIST_MIN);
     v.appendChild(el('div', { class: 'grid kpi' }, [tile('팀원 기록이 있는 판', String(withGames)), tile('같이 2판 이상 한 사람', String(qualPeople.length)), tile(isCobalt() ? '2판 이상 뭉친 팀' : '2판 이상 뭉친 트리오', String(qualTrios.length)), tile('칭호 기준', `${MIN_GAMES}판 이상`)]));
-    v.appendChild(el('p', { class: 'mu small', style: 'margin:8px 0 0' }, '큐 인원 (API의 preMade 값 기준): ' + pmText));
+    v.appendChild(el('p', { class: 'mu small', style: 'margin:8px 0 0' }, '같이 큐를 돌린 인원: ' + pmText));
     if (!qualPeople.length) {
       v.appendChild(el('div', { class: 'card empty', html: `아직 같은 사람과 ${LIST_MIN}판 이상 함께한 기록이 없습니다. 지금까지는 거의 솔로 큐로 돌린 셈이라, 친구와 함께하는 랭크가 쌓이면 여기에 나타납니다.` }));
       return;
     }
-    const layout = el('div', { class: 'grid side' }); const left = el('div'), right = el('div'); layout.append(left, right); v.appendChild(layout);
+    const layout = el('div', { class: 'grid side' }); const left = el('div', { class: 'card' }), right = el('div'); layout.append(left, right); v.appendChild(layout);
     let selected = null;
     function list() {
       left.innerHTML = '';
@@ -124,7 +124,7 @@
         t.appendChild(tb); wrap.appendChild(t); return wrap;
       };
       if (qualTrios.length) left.appendChild(mkTable(isCobalt() ? '팀 (넷이 함께)' : '트리오 (셋이 함께)', qualTrios));
-      left.appendChild(mkTable('사람 (이 사람과 함께, 제3자 무관)', qualPeople));
+      left.appendChild(mkTable('함께한 사람', qualPeople));
       left.appendChild(el('p', { class: 'mu small' }, `솔로 큐 또는 팀원 기록이 불완전한 판: ${Math.max(solo, 0)}판`));
     }
     function detail() {
@@ -153,10 +153,10 @@
       right.appendChild(el('div', { class: 'section' }, [el('h3', {}, '내 사거리별'), statTable(byRange, '사거리')]));
       right.appendChild(el('div', { class: 'section' }, [el('h3', {}, '내 캐릭터별'), statTable(byChar, '캐릭터')]));
       right.appendChild(el('div', { class: 'section' }, [el('h3', {}, '캐릭터 조합별 (나 + 팀원)'), statTable(comboRows, '조합')]));
-      right.appendChild(el('div', { class: 'section' }, [el('h3', {}, '함께한 경기'), gamesTable(g.games.slice().reverse(), null, { noReview: true })]));
+      right.appendChild(el('div', { class: 'section' }, [el('h3', {}, '함께한 경기'), gamesTable(g.games.slice().reverse())]));
     }
     list(); detail();
   }
 
-  registerView({ id: 'companions', label: '같이 한 사람들', order: 35, filters: true, render });
+  registerView({ id: 'companions', label: '같이 한 사람들', short: '같이', order: 35, filters: true, render });
 })();

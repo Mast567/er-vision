@@ -6,18 +6,21 @@
   const PAGE = 50;
   const F = { char: 'all', result: 'all', shown: PAGE, selected: null };
 
+  // 맨 위 한 줄(등수 · RP · 캐릭터) + 결과·전투·빌드·팀 네 묶음
   function detail(g) {
-    const rows = [
-      ['일시', g.startDtm], ['모드', g.modeName], ['캐릭터', g.charName + (g.weaponName ? ' · ' + g.weaponName : '')], ['등수', g.gameRank == null ? '-' : g.gameRank + '등'],
-      ['K / A / D', `${g.kills} / ${g.assists} / ${g.deaths}`], ['팀 킬', String(g.teamKill)], ['생존', `${fmtN(g.surviveMin, 1)}분 / 경기 ${fmtN(g.durationMin, 1)}분`],
-      ['시작 지역', g.startAreaName || '-'], ['증강 코어', g.coreName || '-'], ['전술 스킬', g.tacticalName || '-'],
-      ['나를 잡은 캐릭터', g.killers.map(k => `${k.name}${k.n > 1 ? ' ×' + k.n : ''}`).join(', ') || '-'],
-      ['팀원', [g.mate1, g.mate2, g.mate3].filter(Boolean).join(', ') || '-'],
-      ['가한 / 받은 피해', `${fmtI(g.dmgDealt)} / ${fmtI(g.dmgTaken)}`], ['크레딧', fmtI(g.credits)], ['시야 기여', g.vision == null ? '-' : String(g.vision)],
-      ['경기 ID', String(g.gameId)]
+    const ranked = g.mode === 3;
+    const blocks = [
+      ['결과', [['일시', g.startDtm], ['모드', g.modeName]].concat(ranked ? [['게임 안 / 입장료', `${UI.fmtS(g.rpGain, 0)} / ${UI.fmtS(g.entryCost, 0)}`], ['경기 후 RP', fmtI(g.rp)]] : [])],
+      ['전투', [['K / A / D', `${g.kills} / ${g.assists} / ${g.deaths}`], ['팀 킬', String(g.teamKill)], ['생존', `${fmtN(g.surviveMin, 1)}분 / 경기 ${fmtN(g.durationMin, 1)}분`],
+        ['가한 / 받은 피해', `${fmtI(g.dmgDealt)} / ${fmtI(g.dmgTaken)}`], ['크레딧', fmtI(g.credits)], ['시야 기여', g.vision == null ? '-' : String(g.vision)]]],
+      ['빌드와 동선', [['시작 지역', g.startAreaName || '-'], ['증강 코어', g.coreName || '-'], ['전술 스킬', g.tacticalName || '-'],
+        ['나를 잡은 캐릭터', g.killers.map(k => `${k.name}${k.n > 1 ? ' ×' + k.n : ''}`).join(', ') || '-']]],
+      ['팀', [['팀원', [g.mate1, g.mate2, g.mate3].filter(Boolean).join(', ') || '-']].concat(ranked ? [['팀 / 로비 평균 RP', g.teamAvgRp != null ? `${g.teamAvgRp} / ${g.lobbyAvgRp}` : '-']] : [], [['경기 ID', String(g.gameId)]])]
     ];
-    if (g.mode === 3) rows.splice(4, 0, ['RP 변화', signed(g.rpChange, 0)], ['게임 안 / 입장료', `${UI.fmtS(g.rpGain, 0)} / ${UI.fmtS(g.entryCost, 0)}`], ['경기 후 RP', fmtI(g.rp)], ['팀 / 로비 평균 RP', g.teamAvgRp != null ? `${g.teamAvgRp} / ${g.lobbyAvgRp}` : '-']);
-    return H.card('경기 자세히', [el('dl', { class: 'info' }, rows.flatMap(([k, val]) => [el('dt', {}, k), el('dd', {}, val)]))], { note: '경기 ID로 게임 안에서 리플레이를 찾을 수 있습니다' });
+    const head = el('div', { class: 'detail-head' }, [H.rankBadge(g), el('b', {}, g.charName + (g.weaponName ? ' · ' + g.weaponName : '')), ranked ? el('span', { class: 'detail-rp' }, [signed(g.rpChange, 0), ' RP']) : null]);
+    return H.card('경기 자세히', [head, el('div', { class: 'detail-grid' }, blocks.map(([t, rows]) => el('div', { class: 'detail-block' }, [
+      el('h3', {}, t), el('dl', { class: 'info' }, rows.flatMap(([k, val]) => [el('dt', {}, k), el('dd', {}, val)]))
+    ])))], { note: '경기 ID로 게임 안에서 리플레이를 찾을 수 있습니다' });
   }
 
   function render(v) {
