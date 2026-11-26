@@ -116,6 +116,31 @@ for (let i = 0; i < Math.max(30, N / 50); i++) {
   } catch (e) { fail('분석 예외', raw.slice(0, 2), e.stack.split('\n').slice(0, 3).join(' | ')); }
 }
 
+// ---- 진단(insight.js): 일부러 심은 약점(새벽 판 −40)을 1순위로 찾고, 계산이 맞아떨어지는지
+vm.runInContext(fs.readFileSync(new URL('../js/insight.js', import.meta.url), 'utf8') + ';this.Insight = Insight;', ctx);
+const I = ctx.Insight;
+for (let rep = 0; rep < 20; rep++) {
+  try {
+    const G = [];
+    for (let i = 0; i < 200; i++) {
+      const hour = int(0, 23), late = hour >= 1 && hour < 6, rank = int(1, 8);
+      const rp = I.BENCH.tiers.diamond.rankNet[rank - 1] + (late ? -40 : 0) + int(-15, 15);
+      G.push({ gameId: i, day: `2026-11-${String(1 + (i % 25)).padStart(2, '0')}`, hour, gameRank: rank, rpChange: rp, rpGain: rp + 49, entryCost: -49, kills: int(0, 8), assists: int(0, 8), teamElim: int(0, 5),
+        startAreaName: pick(['항구', '학교', '숲', '공장']), charName: pick(['아야', '재키', '나딘']), characterNum: 1, early: rnd() < 0.1, top3: rank <= 3, win: rank === 1 });
+    }
+    const d = I.diagnose(G);
+    const lateShare = G.filter(g => g.hour >= 1 && g.hour < 6).length / G.length;
+    if (lateShare > 0.12 && (!d.losses.length || d.losses[0].key !== 'late')) fail('진단: 심은 약점을 1순위로 못 찾음', d.losses.map(x => x.key));
+    d.losses.concat(d.strengths).forEach(r => { if (!(r.impact >= 0) || r.n < 10) fail('진단 값 범위', { key: r.key, impact: r.impact, n: r.n }); });
+    const e = I.explain(G[0]);
+    if (Math.abs(e.rank + e.combat + (e.elim || 0) + e.other - e.inGame) > 1e-9) fail('판 해설 합계', e);
+    const p = I.reshape(I.rankDist(G), 0.2, 0.25, 0.2);
+    if (Math.abs(p.reduce((a, b) => a + b, 0) - 1) > 1e-9) fail('계산기 비율 합 1 아님', p);
+    const gr = I.grade('avgRank', 3.5, 200); if (!gr || gr.level !== 4) fail('등급: 평균 3.5등은 매우 좋음', gr);
+    if (I.grade('top3Rate', 0.4, 5) !== null) fail('등급: 10판 미만은 판정 안 함');
+  } catch (e) { fail('진단 예외', null, e.stack.split('\n').slice(0, 3).join(' | ')); }
+}
+
 console.log(fails.length ? `실패 ${fails.length}건` : `통과: 변환 ${N}회, 추출 ${Math.floor(N / 3)}회, 분석 ${Math.max(30, N / 50)}회`);
 fails.forEach(f => console.log('-', f.what, '|', f.extra !== undefined ? JSON.stringify(f.extra).slice(0, 200) : '', '|', f.input));
 process.exit(fails.length ? 1 : 0);

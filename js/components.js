@@ -160,5 +160,21 @@
     return card(null, [box.wrap, table].concat(notes.map(t => el('p', { class: 'mu small' }, t))));
   }
 
-  ERV.helpers = { el, esc, fmtP, fmtN, fmtS, signed, tile, finding, card, empty, group, segmented, sample, rankBadge, statTable, gamesTable, rpStrip, metric, rankRows, profileCard, seasonHistoryCard, charIcon, charLabel, filtered: ERV.filtered, isCobalt: ERV.isCobalt, hasRp: ERV.hasRp, toast: UI.toast };
+  // ---- 등급 표시 (Insight.grade 결과). 판수가 적거나 오차를 넘지 못하면 "참고"
+  const GRADE_CLASS = ['g0', 'g1', 'g2', 'g3', 'g4'];
+  function gradeBadge(gr) {
+    if (!gr) return el('span', { class: 'grade none', title: '10판 미만이라 판정하지 않습니다' }, '판수 부족');
+    return el('span', { class: 'grade ' + GRADE_CLASS[gr.level], title: gr.sure ? '판수가 충분하고 오차를 빼도 같은 등급입니다' : '판수가 적거나 오차 범위 안이라 참고로만 보세요' }, gr.label + (gr.sure ? '' : ' · 참고'));
+  }
+  // 지금 티어(마지막 랭크 경기의 RP)와 다음 티어까지 남은 RP
+  function myTier(G) {
+    const last = G.slice().reverse().find(g => g.mode === 3 && g.rp != null);
+    if (!last) return null;
+    const table = ERV.ref().tiers, t = Analysis.tierOf(last.rp, null, table);
+    if (!t || !t.tier) return null;
+    const nextTier = table && (table.divisions || []).find(d => d.min > last.rp && d.tier !== t.tier);
+    return Object.assign({ rp: last.rp, nextTier: nextTier ? nextTier.tier : null, toNextTier: nextTier ? nextTier.min - last.rp : null, nextTierMin: nextTier ? nextTier.min : null }, t);
+  }
+
+  ERV.helpers = { el, esc, fmtP, fmtN, fmtS, signed, tile, finding, card, empty, group, segmented, sample, rankBadge, statTable, gamesTable, rpStrip, metric, rankRows, profileCard, seasonHistoryCard, charIcon, charLabel, gradeBadge, myTier, tierBadge, filtered: ERV.filtered, isCobalt: ERV.isCobalt, hasRp: ERV.hasRp, toast: UI.toast };
 })();

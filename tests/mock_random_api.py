@@ -6,7 +6,7 @@
 - /__truth 로 정답(닉네임별 경기 목록)을, /__add?nick=&n= 로 새 경기를 맨 앞에 추가한다.
 사용: python3 tests/mock_random_api.py <포트> <시드>
 """
-import json, os, random, re, sys, http.server, urllib.parse, threading
+import datetime, json, os, random, re, sys, http.server, urllib.parse, threading
 
 PORT, SEED = int(sys.argv[1]), int(sys.argv[2])
 HARSH = float(os.environ.get('HARSH', '1'))   # 오류 확률 배수 (거친 시험용)
@@ -25,9 +25,10 @@ def new_game(nick, when):
     gain, cost = R.randint(0, 150), -R.randint(0, 80)
     g = {
         'gameId': STATE['next_game'], 'nickname': nick, 'matchingMode': mode, 'matchingTeamMode': 3, 'seasonId': 41 if mode == 3 else 0,
-        'startDtm': f'2026-11-{when // 24 + 1:02d}T{when % 24:02d}:{R.randint(0, 59):02d}:00.000+0900',
+        # when = 2026-10-01 0시부터 몇 시간째 (큰 값이어도 실제 날짜가 되게)
+        'startDtm': (datetime.datetime(2026, 10, 1) + datetime.timedelta(hours=when, minutes=R.randint(0, 59))).strftime('%Y-%m-%dT%H:%M:00.000+0900'),
         'characterNum': R.randint(1, 30), 'gameRank': R.randint(1, 8), 'playerKill': R.randint(0, 10), 'playerAssistant': R.randint(0, 10),
-        'playerDeaths': R.randint(0, 6), 'teamKill': R.randint(0, 20), 'damageToPlayer': R.randint(0, 50000), 'damageFromPlayer': R.randint(0, 50000),
+        'playerDeaths': R.randint(0, 6), 'teamKill': R.randint(0, 20), 'teamElimination': R.randint(0, 5), 'damageToPlayer': R.randint(0, 50000), 'damageFromPlayer': R.randint(0, 50000),
         'playTime': R.randint(60, 1500), 'duration': 1500, 'placeOfStart': str(R.randint(1, 20)), 'placeOfDeath': str(R.randint(1, 20)),
         'killerCharacter': 'Legacy', 'deathDetails': json.dumps({str(R.randint(1, 30)): R.randint(1, 2)}), 'killDetails': json.dumps({}),
         'mmrBefore': before, 'mmrAfter': before + gain + cost, 'rankPoint': before + gain + cost, 'mmrGainInGame': gain, 'mmrLossEntryCost': cost,
