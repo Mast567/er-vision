@@ -19,7 +19,7 @@
     const more = el('button', { class: 'btn' }, '전 시즌 기록 보기');
     const msg = el('span', { class: 'mu small' }, S.boot ? '' : '처음 보는 닉네임이면 조회 1회로 셉니다.');
     more.onclick = async () => {
-      more.disabled = true; msg.textContent = '시즌마다 공식 기록을 받는 중... 처음에는 30초쯤 걸릴 수 있습니다.';
+      more.disabled = true; msg.textContent = '시즌마다 공식 기록을 받는 중... 처음에는 10초쯤 걸릴 수 있습니다.';
       try { const h = await ERV.loadHistory(data.nickname); addRef(h.ref); data.history = h; rerender(); }
       catch (e) { if (e.needLogin) return handleErr(e); msg.textContent = '실패: ' + e.message; more.disabled = false; }
     };

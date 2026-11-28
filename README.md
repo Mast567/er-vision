@@ -35,7 +35,7 @@
 ## 데이터 흐름
 
 ```
-이터널 리턴 Open API ──(초당 1회)──> Cloudflare Worker ──> D1 데이터베이스
+이터널 리턴 Open API ──(초당 10회 키)──> Cloudflare Worker ──> D1 데이터베이스
                                           ▲      ▲
 GitHub Pages 화면 ──(비밀 코드 포함 요청)──┘      └── 1분마다 cron: 정밀 분석 대기열, 내 경기 자동 수집(6시간마다), 메타 갱신(하루 1번)
 ```

@@ -14,7 +14,7 @@ migrations_dir = "migrations"
 
 [vars]
 API_BASE = "https://open-api.bser.io"
-SLEEP_MS = "1100"          # 게임 API 한도: 초당 1회
+SLEEP_MS = "400"           # 실행 하나당 최대 초당 2.5회. 키 한도 초당 10회(Personal, 2026-11-26 상향)를 동시 실행 4개가 나눠 써도 넘지 않게
 DETAIL_PER_RUN = "5"       # 실행 1회당 경기 상세 처리 수 (상세 1판 ≈ CPU 1ms, 무료 플랜 한도 10ms)
 LIST_PAGES_PER_RUN = "4"   # 실행 1회당 경기 목록 페이지 수
 SITE_ORIGINS = "https://mast567.github.io"   # 로그인 후 돌아갈 수 있는 사이트 주소 (쉼표로 여러 개)

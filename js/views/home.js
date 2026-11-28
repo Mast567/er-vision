@@ -128,7 +128,7 @@
       v.appendChild(el('div', { class: 'grid two top' }, [R.length >= 10 ? metricsCard(R, tier) : H.card('핵심 지표', [H.empty('랭크 10판부터 등급을 붙입니다.')]), sessionCard(G)]));
       const w = weeklyChart(R, tier);
       if (w) v.appendChild(H.group('TREND', '주간 RP', [w], el('span', { class: 'mu small' }, tier.nextTier ? `주마다 마지막 RP · 점선 ${tier.nextTier} ${fmtI(tier.nextTierMin)}` : '주마다 마지막 RP')));
-      v.appendChild(H.group('SEASONS', '시즌 기록', [S.history ? H.seasonHistoryCard(S.history) : H.card(null, [H.empty('전 시즌 기록을 불러오는 중... 처음에는 시즌마다 공식 기록을 받아서 30초쯤 걸릴 수 있습니다.')])], el('span', { class: 'mu small' }, '공식 시즌 통계 · 랭크')));
+      v.appendChild(H.group('SEASONS', '시즌 기록', [S.history ? H.seasonHistoryCard(S.history) : H.card(null, [H.empty('전 시즌 기록을 불러오는 중... 처음에는 시즌마다 공식 기록을 받아서 10초쯤 걸릴 수 있습니다.')])], el('span', { class: 'mu small' }, '공식 시즌 통계 · 랭크')));
       return;
     }
     const F = findings(G);

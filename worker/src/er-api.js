@@ -2,11 +2,11 @@ import { sleep, toInt } from './util.js';
 
 export class BudgetError extends Error { constructor() { super('이번 실행의 호출 예산을 다 썼습니다'); this.budget = true; } }
 
-// 게임 API: 초당 1회 제한. 한 실행에서 보낼 수 있는 요청 수(cap)를 넘기면 BudgetError로 멈추고 다음 실행이 이어 받는다.
+// 게임 API: 키 하나에 초당 10회 제한(Personal). 요청 사이 간격은 SLEEP_MS. 한 실행에서 보낼 수 있는 요청 수(cap)를 넘기면 BudgetError로 멈추고 다음 실행이 이어 받는다.
 export class ErApi {
   constructor(env, cap) {
     this.env = env; this.base = env.API_BASE || 'https://open-api.bser.io';
-    this.gap = toInt(env.SLEEP_MS, 1100); this.left = cap; this.last = 0;
+    this.gap = toInt(env.SLEEP_MS, 400); this.left = cap; this.last = 0;
   }
   async raw(url, headers) {
     if (this.left <= 0) throw new BudgetError();
