@@ -7,7 +7,8 @@ const API = (() => {
   };
   const defaultUrl = () => (window.ERV_CONFIG && window.ERV_CONFIG.apiUrl) || '';
   const store = {
-    get url() { return ls.get(KEY_URL) || defaultUrl(); },
+    // 사이트에 정해 둔 서버 주소가 있으면 그것이 우선. 예전에 이 브라우저에 저장된 주소(옛 서버)는 무시한다
+    get url() { return defaultUrl() || ls.get(KEY_URL) || ''; },
     set url(v) { ls.set(KEY_URL, v); },
     get session() { return ls.get(KEY_SESSION); },
     set session(v) { ls.set(KEY_SESSION, v); },

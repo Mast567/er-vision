@@ -153,7 +153,8 @@ const ERV = (() => {
     const urlWrap = $('#gate-url-wrap'), urlInp = $('#gate-url'), msg = $('#gate-msg');
     const buttons = [...v.querySelectorAll('[data-login]')];
     urlInp.value = API.store.url;
-    urlWrap.hidden = !!(window.ERV_CONFIG && window.ERV_CONFIG.apiUrl) && !!API.store.url;
+    // 서버 주소는 사이트에 정해 두었거나 한 번 입력했으면 묻지 않는다
+    urlWrap.hidden = !!API.store.url;
     if (S.loginError) { msg.textContent = '로그인하지 못했습니다: ' + S.loginError; S.loginError = ''; }
     // 서버가 켜 둔 로그인 수단만 보인다
     const check = async url => {
