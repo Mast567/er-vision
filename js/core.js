@@ -2,7 +2,7 @@
    화면은 js/views/*.js 와 js/features/*.js 가 ERV.registerView 로 등록한다. */
 const ERV = (() => {
   const { $, el, toast, killCharts } = UI;
-  const VERSION = 'v0.6';
+  const VERSION = 'v0.7.1';
   const S = { boot: null, games: [], mode: 3, season: 'all', seasonStats: null, history: null, historyError: null, bootError: null, lookup: null, lookupPending: null, lookupRange: 30, loginError: '', linked: '', guestRef: null };
   // 기준 자료(meta, seasons, tiers): 로그인하면 bootstrap, 로그인 없이 조회하면 조회 결과에 붙어 온 것
   const ref = () => S.boot || S.guestRef || { meta: null, seasons: [], tiers: null };
