@@ -148,7 +148,7 @@
     const ranked = S.mode === 3 ? G.filter(g => g.mode === 3) : [];
     const tier = ranked.length ? H.myTier(ranked) : null;
     v.appendChild(el('div', { class: 'page-head' }, [el('h1', {}, '전략'), el('span', { class: 'mu' }, ranked.length ? `${ranked.length}판${tier ? ' · ' + tier.label : ''} · 판당 RP ${sgn(Analysis.mean(ranked.map(g => g.rpChange)), 1)}` : '흐린 줄 = 10판 미만이라 참고만')]));
-    if (!G.length) { v.appendChild(H.card(null, [H.empty('이 모드·시즌에 저장된 경기가 없습니다.')])); return; }
+    if (!G.length) { v.appendChild(H.noGames()); return; }
     if (!ranked.length) { v.appendChild(el('p', { class: 'mu' }, '진단과 계산기는 랭크 경기만 봅니다. 위에서 모드를 랭크로 바꾸세요. 아래는 이 모드의 근거 표입니다.')); evidence(v, G, selected); return; }
     const d = Insight.diagnose(ranked);
     if (d.tooFew) v.appendChild(H.card(null, [H.empty(`진단은 랭크 40판부터 합니다. 지금 ${ranked.length}판.`)]));

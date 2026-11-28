@@ -35,10 +35,23 @@
   const card = (title, children, opts = {}) => el('section', { class: 'card ' + (opts.class || '') }, [
     title ? el('div', { class: 'card-head' }, [el('h2', {}, title), opts.note ? el('span', { class: 'card-note' }, opts.note) : null]) : null
   ].concat(children));
-  const empty = text => el('div', { class: 'empty' }, text);
+  // 빈 상태·오류 상태: 무엇이 와야 하는지 + 그걸 채우는 행동 하나. action = { label, onClick }
+  const empty = (text, action, opts = {}) => el('div', { class: 'empty' + (opts.error ? ' err' : ''), role: opts.error ? 'alert' : null }, [
+    el('span', {}, text), action ? el('button', { type: 'button', class: 'btn' + (opts.error ? '' : ' primary'), onclick: action.onClick }, action.label) : null
+  ]);
+  const failed = (what, err, retry) => empty(`${what} 불러오기에 실패했습니다.${err && err.message ? ' (' + err.message + ')' : ''}`, retry ? { label: '다시 시도', onClick: retry } : null, { error: true });
+  // 이 모드·시즌에 경기가 없을 때: 다른 모드·시즌에 경기가 있으면 전체 보기, 아예 없으면 갱신
+  const noGames = () => {
+    const any = ERV.S.games.length > 0;
+    return card(null, [empty(any ? '이 모드·시즌에는 저장된 경기가 없습니다. 다른 모드나 시즌에는 있습니다.' : '아직 저장된 경기가 없습니다. 서버가 1분마다 새 경기를 모으고, 바로 받으려면 갱신을 누르세요.',
+      any ? { label: '전체 모드·기간으로 보기', onClick: () => { const m = document.getElementById('mode-pick'); m.value = 'all'; m.dispatchEvent(new Event('change')); } }
+          : { label: '지금 갱신', onClick: () => ERV.refreshGames() })]);
+  };
+  // 불러오는 중: 올 내용의 높이만큼 회색 틀
+  const skeleton = (heights = [140, 220, 180]) => el('div', { class: 'skel', 'aria-busy': 'true', 'aria-label': '불러오는 중' }, heights.map(h => el('div', { class: 'skel-bar', style: { height: h + 'px' } })));
   // 화면 안의 큰 묶음. 묶음 사이는 넓게, 묶음 안 카드끼리는 좁게 띄워 어디까지가 한 덩어리인지 보이게 한다.
   const group = (kicker, title, children, right) => el('section', { class: 'group' }, [
-    el('div', { class: 'group-head' }, [kicker ? el('span', { class: 'group-kicker' }, kicker) : null, el('h2', { class: 'group-title' }, title), el('span', { class: 'group-rule' }), right || null])
+    el('div', { class: 'group-head' }, [el('h2', { class: 'group-title' }, title), el('span', { class: 'group-rule' }), right || null])
   ].concat(children));
   // 여러 값 중 하나를 고르는 버튼 묶음. options: [[값, 글자], ...]
   const segmented = (label, options, value, onPick) => el('div', { class: 'seg', role: 'group', 'aria-label': label },
@@ -143,7 +156,7 @@
     const box = UI.chartBox(200);
     requestAnimationFrame(() => UI.chart(box.canvas, {
       type: 'bar',
-      data: { labels: asc.map(label), datasets: [{ data: asc.map(s => s.rp), backgroundColor: UI.css('--ac'), borderRadius: 3, maxBarThickness: 40 }] },
+      data: { labels: asc.map(label), datasets: [{ data: asc.map(s => s.rp), backgroundColor: UI.css('--pos'), borderRadius: 3, maxBarThickness: 40 }] },
       options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => UI.fmtI(c.raw) + ' RP' } } }, scales: { x: { ticks: { maxRotation: 0, autoSkip: true } } } }
     }));
     const most = s => { const c = (s.characterStats || []).slice().sort((a, b) => b.games - a.games)[0]; return c ? charLabel(c.characterCode, Analysis.charName(c.characterCode, R.meta), el('span', { class: 'mu' }, ` · ${c.games}판`)) : '-'; };
@@ -176,5 +189,5 @@
     return Object.assign({ rp: last.rp, nextTier: nextTier ? nextTier.tier : null, toNextTier: nextTier ? nextTier.min - last.rp : null, nextTierMin: nextTier ? nextTier.min : null }, t);
   }
 
-  ERV.helpers = { el, esc, fmtP, fmtN, fmtS, signed, tile, finding, card, empty, group, segmented, sample, rankBadge, statTable, gamesTable, rpStrip, metric, rankRows, profileCard, seasonHistoryCard, charIcon, charLabel, gradeBadge, myTier, tierBadge, filtered: ERV.filtered, isCobalt: ERV.isCobalt, hasRp: ERV.hasRp, toast: UI.toast };
+  ERV.helpers = { el, esc, fmtP, fmtN, fmtS, signed, tile, finding, card, empty, failed, skeleton, noGames, group, segmented, sample, rankBadge, statTable, gamesTable, rpStrip, metric, rankRows, profileCard, seasonHistoryCard, charIcon, charLabel, gradeBadge, myTier, tierBadge, filtered: ERV.filtered, isCobalt: ERV.isCobalt, hasRp: ERV.hasRp, toast: UI.toast };
 })();

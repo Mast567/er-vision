@@ -3,7 +3,7 @@
 const ERV = (() => {
   const { $, el, toast, killCharts } = UI;
   const VERSION = 'v0.6';
-  const S = { boot: null, games: [], mode: 3, season: 'all', seasonStats: null, history: null, lookup: null, lookupPending: null, lookupRange: 30, loginError: '', linked: '', guestRef: null };
+  const S = { boot: null, games: [], mode: 3, season: 'all', seasonStats: null, history: null, historyError: null, bootError: null, lookup: null, lookupPending: null, lookupRange: 30, loginError: '', linked: '', guestRef: null };
   // 기준 자료(meta, seasons, tiers): 로그인하면 bootstrap, 로그인 없이 조회하면 조회 결과에 붙어 온 것
   const ref = () => S.boot || S.guestRef || { meta: null, seasons: [], tiers: null };
 
@@ -34,7 +34,11 @@ const ERV = (() => {
     const loggedIn = !!S.boot;
     document.body.classList.toggle('logged-in', loggedIn);
     $('#filters').hidden = !(loggedIn && def.filters);
-    if (!loggedIn && !def.public) { renderGate(v); return; }
+    if (!loggedIn && !def.public) {
+      // 로그인은 돼 있는데 서버가 응답하지 않은 경우: 로그인 화면 대신 무엇이 안 됐는지와 다시 시도
+      if (S.bootError && API.store.session) { renderBootError(v); return; }
+      renderGate(v); return;
+    }
     try { def.render(v, decodeURIComponent(param)); }
     catch (e) { console.error(e); v.appendChild(el('div', { class: 'card empty' }, '화면을 그리는 중 오류가 났습니다: ' + e.message)); }
   }
@@ -82,10 +86,10 @@ const ERV = (() => {
     if (b.owner.nickname && !S.seasonStats) {
       API.get('seasonStats').catch(() => []).then(st => { S.seasonStats = st; if (currentView() === 'home') route(); });
     }
-    if (b.owner.nickname && !S.history) loadHistory().then(h => { S.history = h; if (currentView() === 'home') route(); }).catch(() => {});
+    if (b.owner.nickname && !S.history) retryHistory();
   }
   // 로그아웃·계정 삭제: 이 브라우저에 남은 앞 계정의 데이터를 지운다
-  function forget() { API.store.session = ''; Object.assign(S, { boot: null, games: [], seasonStats: null, history: null }); }
+  function forget() { API.store.session = ''; Object.assign(S, { boot: null, games: [], seasonStats: null, history: null, historyError: null }); }
   // 전 시즌 기록. 서버가 한 번에 다 못 받으면(partial) 남은 시즌을 이어서 받는다. nickname이 없으면 내 계정
   async function loadHistory(nickname) {
     let d;
@@ -94,6 +98,10 @@ const ERV = (() => {
       if (!d.partial) break;
     }
     return d;
+  }
+  function retryHistory() {
+    S.historyError = null;
+    loadHistory().then(h => { S.history = h; }).catch(e => { S.historyError = e; }).finally(() => { if (currentView() === 'home') route(); });
   }
   function handleErr(e, prefix) {
     if (e && e.needLogin) { forget(); route(); toast('다시 로그인하세요.', true); return; }
@@ -123,6 +131,20 @@ const ERV = (() => {
   const refreshBtn = $('#refresh-btn');
   refreshBtn.onclick = () => refreshGames((added, left) => { refreshBtn.textContent = left ? `상세 ${left}판 남음` : `${added}판 추가`; }).finally(() => { refreshBtn.textContent = '지금 갱신'; });
   $('#theme-btn').onclick = () => { UI.applyTheme(UI.theme() === 'dark' ? 'light' : 'dark'); route(); };
+
+  function renderBootError(v) {
+    const H = ERV.helpers;
+    v.appendChild(H.card(null, [H.failed('내 기록', S.bootError, startBoot)]));
+    v.appendChild(el('p', { class: 'mu small center' }, ['계속 안 되면 서버 점검 중일 수 있습니다. ', el('a', { href: '#/lookup' }, '로그인 없이 닉네임 조회'), '는 따로 시도해 볼 수 있습니다.']));
+  }
+  // 첫 화면: 서버에서 내 기록을 받는 동안 올 내용 모양의 틀을 보여 준다
+  async function startBoot() {
+    S.bootError = null;
+    const v = $('#view'); v.innerHTML = ''; v.appendChild(ERV.helpers.skeleton());
+    try { await loadBoot(); }
+    catch (e) { if (!e.needLogin) S.bootError = e; else forget(); }
+    route();
+  }
 
   // ---- 로그인 화면
   function renderGate(v) {
@@ -175,13 +197,11 @@ const ERV = (() => {
   // 모든 화면 파일이 등록을 마친 뒤 시작한다
   window.addEventListener('DOMContentLoaded', async () => {
     readHashParams();
-    if (API.store.url && API.store.session && !parseHash().def.public) {
-      try { await loadBoot(); } catch (e) { if (!e.needLogin) toast('연결 실패: ' + e.message, true); }
-    }
+    if (API.store.url && API.store.session && !parseHash().def.public) return startBoot();
     route();
   });
 
-  return { VERSION, S, Analysis, registerView, route, ref, filtered, seasonName, loadBoot, loadHistory, forget, handleErr, refreshGames, isCobalt, hasRp };
+  return { VERSION, S, Analysis, registerView, route, ref, filtered, seasonName, loadBoot, loadHistory, retryHistory, forget, handleErr, refreshGames, isCobalt, hasRp };
 })();
 
 // 기능 파일(js/features/*.js)이 window.ERV 로 찾는다

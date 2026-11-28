@@ -65,8 +65,8 @@
   }
 
   function row(g, rerender) {
-    const open = F.open === g.gameId, ranked = g.mode === 3;
-    const r = el('button', { type: 'button', class: 'rec-row' + (open ? ' open' : ''), 'aria-expanded': String(open), onclick: () => { F.open = open ? null : g.gameId; rerender(); } }, [
+    const open = F.open === String(g.gameId), ranked = g.mode === 3;
+    const r = el('button', { type: 'button', class: 'rec-row' + (open ? ' open' : ''), 'aria-expanded': String(open), onclick: () => { F.open = open ? null : String(g.gameId); rerender(); } }, [
       el('span', { class: 'rec-bar ' + barClass(g) }),
       el('span', { class: 'rank-lg ' + rankClass(g.gameRank) }, g.mode === 6 ? (g.gameRank === 1 ? '승' : '패') : String(g.gameRank ?? '-')),
       el('span', { class: 'rec-who' }, [H.charIcon(g.characterNum, 36), el('span', {}, [el('b', {}, g.charName), g.weaponName ? el('span', { class: 'mu' }, ' · ' + g.weaponName) : null, el('br'), el('span', { class: 'mu small' }, `${g.startDtm.slice(11, 16)}${g.startAreaName ? ' · ' + g.startAreaName + ' 시작' : ''}`)])]),
@@ -99,8 +99,19 @@
   function render(v) {
     const all = filtered(S.games).slice().reverse();
     v.appendChild(el('div', { class: 'page-head' }, [el('h1', {}, '기록'), el('span', { class: 'mu' }, `${all.length}판`)]));
-    if (!all.length) { v.appendChild(H.card(null, [H.empty('이 모드·시즌에 저장된 경기가 없습니다.')])); return; }
-    const rerender = () => { const y = window.scrollY; ERV.route(); window.scrollTo(0, y); };
+    if (!all.length) { v.appendChild(H.noGames()); return; }
+    // 거르기·펼친 판은 주소(#/records?f=loss&c=재키&g=경기ID)에 둔다. 새로고침·공유해도 같은 화면
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    F.chip = q.get('f') || 'all'; F.char = q.get('c') || 'all'; F.open = q.get('g');
+    const rerender = () => {
+      const p = new URLSearchParams();
+      if (F.chip !== 'all') p.set('f', F.chip);
+      if (F.char !== 'all') p.set('c', F.char);
+      if (F.open) p.set('g', F.open);
+      const qs = p.toString();
+      history.replaceState(null, '', location.pathname + location.search + '#/records' + (qs ? '?' + qs : ''));
+      const y = window.scrollY; ERV.route(); window.scrollTo(0, y);
+    };
     const chars = [...new Set(all.map(g => g.charName))].sort((a, b) => a.localeCompare(b, 'ko'));
     if (F.char !== 'all' && !chars.includes(F.char)) F.char = 'all';
     const chip = CHIPS.find(c => c[0] === F.chip) || CHIPS[0];
@@ -110,7 +121,7 @@
       el('label', { class: 'rec-char' }, ['캐릭터', el('select', { onchange: e => { F.char = e.target.value; F.days = DAYS_PAGE; rerender(); } }, [el('option', { value: 'all' }, '모든 캐릭터')].concat(chars.map(c => el('option', { value: c, selected: c === F.char }, c))))]),
       el('span', { class: 'mu small' }, `${list.length}판`)
     ])));
-    if (!list.length) { v.appendChild(H.card(null, [H.empty('조건에 맞는 판이 없습니다.')])); return; }
+    if (!list.length) { v.appendChild(H.card(null, [H.empty('이 조건에 맞는 판이 없습니다.', { label: '거르기 풀고 전체 보기', onClick: () => { F.chip = 'all'; F.char = 'all'; F.open = null; rerender(); } })])); return; }
     const days = [];
     list.forEach(g => { const last = days[days.length - 1]; if (last && last[0] === g.day) last[1].push(g); else days.push([g.day, [g]]); });
     days.slice(0, F.days).forEach(([day, games], i) => v.appendChild(dayCard(day, games, i, rerender)));

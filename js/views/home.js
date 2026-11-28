@@ -109,7 +109,7 @@
     requestAnimationFrame(() => chart(box.canvas, {
       type: 'line',
       data: { labels: W.map(w => w.key.slice(5)), datasets: [{ data: W.map(w => w.rp), borderColor: css('--pos'), backgroundColor: css('--pos'), pointRadius: 4, borderWidth: 3, tension: 0.2 }]
-        .concat(tier.nextTierMin ? [{ data: W.map(() => tier.nextTierMin), borderColor: css('--ac'), borderDash: [6, 6], pointRadius: 0, borderWidth: 1.5 }] : []) },
+        .concat(tier.nextTierMin ? [{ data: W.map(() => tier.nextTierMin), borderColor: css('--mu'), borderDash: [6, 6], pointRadius: 0, borderWidth: 1.5 }] : []) },
       options: { maintainAspectRatio: false, plugins: { legend: { display: false } } }
     }));
     return H.card(null, [box.wrap], {});
@@ -118,8 +118,8 @@
   function render(v) {
     const G = filtered(S.games);
     v.appendChild(el('div', { class: 'page-head' }, [el('h1', {}, '홈'), el('span', { class: 'mu' }, `${S.mode === 'all' ? '전체 모드' : Analysis.MODE_NAME[S.mode]} · ${S.season === 'all' ? '전체 기간' : seasonName(S.season)}`), el('a', { href: '#/records', class: 'small' }, '경기 기록 보기')]));
-    if (!S.boot.owner.nickname) { v.appendChild(H.card(null, [H.empty('내 계정에서 게임 닉네임을 저장하면 경기 기록을 모으기 시작합니다. 닉네임 조회는 지금 바로 쓸 수 있습니다.')])); return; }
-    if (!G.length) { v.appendChild(H.card(null, [H.empty('이 모드·시즌에 저장된 경기가 없습니다. [지금 갱신]을 누르거나 다른 모드·시즌을 고르세요.')])); return; }
+    if (!S.boot.owner.nickname) { v.appendChild(H.card(null, [H.empty('내 계정에서 게임 닉네임을 저장하면 경기 기록을 모으기 시작합니다. 닉네임 조회는 지금 바로 쓸 수 있습니다.', { label: '닉네임 저장하러 가기', onClick: () => { location.hash = '#/account'; } })])); return; }
+    if (!G.length) { v.appendChild(H.noGames()); return; }
     const R = G.filter(g => g.mode === 3), tier = R.length ? H.myTier(R) : null;
     if (tier) {
       const diag = R.length >= 40 ? Insight.diagnose(R) : null;
@@ -128,7 +128,7 @@
       v.appendChild(el('div', { class: 'grid two top' }, [R.length >= 10 ? metricsCard(R, tier) : H.card('핵심 지표', [H.empty('랭크 10판부터 등급을 붙입니다.')]), sessionCard(G)]));
       const w = weeklyChart(R, tier);
       if (w) v.appendChild(H.group('TREND', '주간 RP', [w], el('span', { class: 'mu small' }, tier.nextTier ? `주마다 마지막 RP · 점선 ${tier.nextTier} ${fmtI(tier.nextTierMin)}` : '주마다 마지막 RP')));
-      v.appendChild(H.group('SEASONS', '시즌 기록', [S.history ? H.seasonHistoryCard(S.history) : H.card(null, [H.empty('전 시즌 기록을 불러오는 중... 처음에는 시즌마다 공식 기록을 받아서 10초쯤 걸릴 수 있습니다.')])], el('span', { class: 'mu small' }, '공식 시즌 통계 · 랭크')));
+      v.appendChild(H.group('SEASONS', '시즌 기록', [S.history ? H.seasonHistoryCard(S.history) : S.historyError ? H.card(null, [H.failed('전 시즌 기록', S.historyError, ERV.retryHistory)]) : H.card(null, [H.skeleton([150]), el('p', { class: 'mu small center' }, '시즌마다 공식 기록을 받는 중입니다. 처음에는 10초쯤 걸릴 수 있습니다.')])], el('span', { class: 'mu small' }, '공식 시즌 통계 · 랭크')));
       return;
     }
     const F = findings(G);
